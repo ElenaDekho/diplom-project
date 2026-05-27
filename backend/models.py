@@ -17,11 +17,12 @@ class Shop(models.Model):
     name = models.CharField(max_length=100, verbose_name='Название магазина')
     url = models.URLField(verbose_name='Ссылка на магазин', null=True, blank=True)
     # Связь с пользователем-владельцем магазина (поставщиком)
-    user = models.OneToOneField(User, verbose_name='Владелец',
-                                on_delete=models.CASCADE,
-                                related_name='shop',
-                                limit_choices_to={'type': 'supplier'})
+    user = models.ForeignKey(User, verbose_name='Владелец',
+                             on_delete=models.CASCADE,
+                             related_name='shops',
+                             limit_choices_to={'type': 'supplier'})
     state = models.BooleanField(verbose_name='Принимает заказы', default=True)
+    yaml_file = models.CharField(max_length=255, verbose_name="Путь к файлу импорта", blank=True, null=True)
 
     class Meta:
         verbose_name = 'Магазин'
@@ -66,8 +67,7 @@ class ProductInfo(models.Model):
                             blank=True)  # Может отличаться от общего названия
     model = models.CharField(max_length=100, verbose_name='Модель/Артикул', blank=True)
     external_id = models.PositiveIntegerField(verbose_name='Внешний ID', null=True, blank=True)
-
-    quantity = models.PositiveIntegerField(verbose_name='Количество на складе')
+    quantity = models.PositiveIntegerField(default=0, verbose_name="Количество на складе")
     price = models.PositiveIntegerField(verbose_name='Цена')
     price_rrc = models.PositiveIntegerField(verbose_name='Рекомендуемая цена', null=True, blank=True)
 

@@ -2,3 +2,5 @@ asgiref==3.11.1
 Django==5.2.14
 djangorestframework==3.17.1
 sqlparse==0.5.5
+pytest==9.0.3
+pytest-django==4.12.0

@@ -1,0 +1,16 @@
+shop: name of shop
+owner_email: shop_email@example.com
+
+categories:
+  - id: 1
+    name: toys
+
+goods:
+  - category: 1
+    name: doll
+    price: 120
+    price_rrc: 150
+    quantity: 10
+    parameters:
+      "eye color": blue
+      "hair": blonde
