@@ -1,6 +1,7 @@
 import os
 import django
 import yaml
+from yaml.scanner import ScannerError
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
@@ -10,8 +11,31 @@ from users.models import User
 
 
 def import_from_yaml(file_path):
-    with open(file_path, 'r', encoding='utf-8') as file:
-        data = yaml.safe_load(file)
+    if not file_path:
+        print(f"ОШИБКА: Не указан путь к файлу для магазина")
+        return
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            data = yaml.safe_load(file)
+    except FileNotFoundError:
+        print(f"ОШИБКА: Файл '{file_path}' не найден")
+        return
+    except yaml.scanner.ScannerError as e:
+        print(f"ОШИБКА: Неверный синтаксис YAML: {e}")
+        return
+    except Exception as e:
+        print(f"ОШИБКА при открытии или чтении файла: {e}")
+        return
+
+    try:
+        shop_name = data['shop']
+        owner_email = data.get('owner_email')
+        categories = data['categories']
+        goods = data['goods']
+    except KeyError as e:
+        print(f"ОШИБКА: В файле отсутствует обязательное поле: {e}")
+        return
 
     shop_name = data['shop']
     owner_email = data.get('owner_email')

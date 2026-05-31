@@ -1,5 +1,6 @@
 from django.db import models
 from users.models import User  # Импортируем нашу кастомную модель
+from django.utils import timezone
 
 # Статусы заказа
 STATE_CHOICES = (
@@ -158,3 +159,12 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f'{self.product_info.product.name} x {self.quantity}'
+
+
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    token = models.CharField(max_length=100, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def is_valid(self):
+        return (timezone.now() - self.created_at).seconds < 3600  # 1 час

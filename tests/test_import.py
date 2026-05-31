@@ -2,8 +2,10 @@ import pytest
 from unittest.mock import Mock, patch, mock_open
 from users.models import User
 from backend.models import Shop, Category, Product, ProductInfo, Parameter, ProductParameter
-
 from import_data import import_from_yaml
+import tempfile
+import yaml
+from rest_framework.test import APIClient
 
 
 # ========== 1. НЕТ ПОЧТЫ ==========
@@ -410,3 +412,52 @@ def test_update_both_price_and_quantity():
                 assert mock_info.price == 90
                 assert mock_info.quantity == 5
                 assert any("ОБНОВЛЕНА ЦЕНА" in str(c) for c in mock_print.call_args_list)
+
+#=======================================================#
+### ИМПОРТ ПОСТАВЩИКОМ ###
+#=======================================================#
+
+# Тест: успешный импорт прайса
+@pytest.mark.django_db
+def test_import_price_success():
+    user = User.objects.create_user(email='supplier@test.com', password='testpass', username='supplier',
+                                    type='supplier')
+    shop = Shop.objects.create(name='Test Shop', user=user, yaml_file='temp_import.yaml')
+
+    # Создаём временный YAML-файл
+    data = {
+        'shop': 'Test Shop',
+        'owner_email': 'supplier@test.com',
+        'categories': [{'id': 1, 'name': 'Electronics'}],
+        'goods': [{'category': 1, 'name': 'Laptop', 'price': 1000, 'price_rrc': 1200, 'parameters': {}}]
+    }
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        yaml.dump(data, f)
+        temp_path = f.name
+
+    shop.yaml_file = temp_path
+    shop.save()
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.post('/api/import/', {'shop_id': shop.id})
+
+    assert response.status_code == 200
+    assert response.data['message'] == f'Импорт для магазина {shop.name} выполнен'
+    assert ProductInfo.objects.filter(product__name='Laptop').exists()
+
+    # Удаляем временный файл
+    import os
+    os.unlink(temp_path)
+
+
+# Тест: импорт с неверным shop_id
+@pytest.mark.django_db
+def test_import_price_wrong_shop():
+    user = User.objects.create_user(email='supplier@test.com', password='testpass', username='supplier',
+                                    type='supplier')
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.post('/api/import/', {'shop_id': 999})
+    assert response.status_code == 404
+    assert response.data['error'] == 'Магазин не найден или не принадлежит вам'
