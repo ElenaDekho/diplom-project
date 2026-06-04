@@ -10,7 +10,7 @@ from backend.models import Order, OrderItem, ProductInfo, Contact, PasswordReset
 from django.core.mail import send_mail
 from django.conf import settings
 import uuid
-from users.models import User
+from users.models import User, EmailConfirmationToken
 from import_data import import_from_yaml
 from backend.models import Shop, STATE_CHOICES
 from django_filters.rest_framework import DjangoFilterBackend
@@ -474,3 +474,20 @@ class CancelOrderView(APIView):
             fail_silently=True,
         )
         return Response({"message": "Заказ отменён"}, status=status.HTTP_200_OK)
+
+
+class ConfirmEmailView(APIView):
+    def get(self, request, token):
+        try:
+            confirm_token = EmailConfirmationToken.objects.get(token=token)
+        except EmailConfirmationToken.DoesNotExist:
+            return Response({"error": "Неверный токен"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not confirm_token.is_valid():
+            return Response({"error": "Токен истёк"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = confirm_token.user
+        user.is_active = True
+        user.save()
+        confirm_token.delete()
+        return Response({"message": "Email подтверждён"}, status=status.HTTP_200_OK)

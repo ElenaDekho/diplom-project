@@ -1,8 +1,11 @@
 from rest_framework import serializers
-from users.models import User
+from users.models import User, EmailConfirmationToken
 from django.contrib.auth import authenticate
 from backend.models import ProductInfo, ProductParameter, Contact
 import re
+from django.core.mail import send_mail
+from django.conf import settings
+import uuid
 
 
 class UserRegisterSerializer(serializers.Serializer):
@@ -25,6 +28,15 @@ class UserRegisterSerializer(serializers.Serializer):
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
             password=validated_data['password']
+        )
+        token = str(uuid.uuid4())
+        EmailConfirmationToken.objects.create(user=user, token=token)
+        send_mail(
+            subject='Подтверждение регистрации',
+            message=f'Перейдите по ссылке: http://127.0.0.1:8000/api/confirm-email/{token}/',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
         )
         return user
 

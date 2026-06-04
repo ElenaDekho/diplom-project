@@ -1,6 +1,7 @@
 import pytest
 from rest_framework.test import APIClient
-from users.models import User
+from users.models import User, EmailConfirmationToken
+from unittest.mock import patch
 
 # Тест: успешный логин
 @pytest.mark.django_db
@@ -124,4 +125,35 @@ def test_password_reset_confirm():
     # Проверяем, что новый пароль работает
     login_response = client.post('/api/login/', {'email': 'test@test.com', 'password': 'newpass123'})
     assert login_response.status_code == 200
+
+
+# Тест: подтверждение регистрации по email
+@pytest.mark.django_db
+@patch('backend.serializers.send_mail')
+def test_email_confirmation_flow(mock_send_mail):
+    # Регистрация
+    client = APIClient()
+    response = client.post('/api/register/', {
+        'email': 'confirm@test.com',
+        'password': 'testpass'
+    })
+    assert response.status_code == 201
+
+    # Получаем токен из базы
+    token_obj = EmailConfirmationToken.objects.get(user__email='confirm@test.com')
+    token = token_obj.token
+
+    # Подтверждение
+    response = client.get(f'/api/confirm-email/{token}/')
+    assert response.status_code == 200
+    assert response.data['message'] == 'Email подтверждён'
+
+    # Проверяем, что пользователь активен
+    user = User.objects.get(email='confirm@test.com')
+    assert user.is_active == True
+
+    # Повторное использование токена должно дать ошибку
+    response = client.get(f'/api/confirm-email/{token}/')
+    assert response.status_code == 400
+    assert response.data['error'] == 'Неверный токен'
 
