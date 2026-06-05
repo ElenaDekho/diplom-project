@@ -66,28 +66,20 @@ class ProductInfoSerializer(serializers.ModelSerializer):
 
 
 class ContactSerializer(serializers.ModelSerializer):
+    city = serializers.CharField(required=True, error_messages={'blank': 'Укажите город'})
+    street = serializers.CharField(required=True, error_messages={'blank': 'Укажите улицу'})
+    house = serializers.CharField(required=True, error_messages={'blank': 'Укажите номер дома'})
+    phone = serializers.CharField(required=True, error_messages={'blank': 'Укажите телефон'})
+
     class Meta:
         model = Contact
         fields = '__all__'
         read_only_fields = ('id',)
-        extra_kwargs = {'user': {'required': False}}
+        extra_kwargs = {
+            'user': {'required': False},
+        }
 
     def validate_phone(self, value):
         if not re.match(r'^\+?\d+$', value):
             raise serializers.ValidationError("Телефон должен содержать только цифры и может начинаться с +")
-        return value
-
-    def validate_city(self, value):
-        if not value or not value.strip():
-            raise serializers.ValidationError("Город не может быть пустым")
-        return value
-
-    def validate_street(self, value):
-        if not value or not value.strip():
-            raise serializers.ValidationError("Улица не может быть пустой")
-        return value
-
-    def validate_house(self, value):
-        if not value or not value.strip():
-            raise serializers.ValidationError("Дом не может быть пустым")
         return value

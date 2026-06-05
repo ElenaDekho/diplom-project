@@ -3,6 +3,7 @@ from .views import RegisterView, LoginView, ProductListView, CartView, ContactVi
 from .views import OrderCreateView, OrderListView, OrderDetailView, LogoutView, ProductShopsView
 from .views import PasswordResetRequestView, PasswordResetConfirmView, ImportPriceView, SupplierOrdersView
 from .views import ProductDetailView, OrderStatusUpdateView, CancelOrderView, ConfirmEmailView
+from .views import StorekeeperOrdersView, StorekeeperOrderStatusView, StorekeeperExportOrdersView
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
@@ -24,4 +25,7 @@ urlpatterns = [
     path('orders/<int:pk>/status/', OrderStatusUpdateView.as_view(), name='order_status'),
     path('orders/<int:pk>/cancel/', CancelOrderView.as_view(), name='order_cancel'),
     path('confirm-email/<str:token>/', ConfirmEmailView.as_view(), name='confirm_email'),
+    path('storekeeper/orders/', StorekeeperOrdersView.as_view(), name='storekeeper_orders'),
+    path('storekeeper/orders/<int:pk>/status/', StorekeeperOrderStatusView.as_view(), name='storekeeper_order_status'),
+    path('storekeeper/orders/export/', StorekeeperExportOrdersView.as_view(), name='storekeeper_export_orders'),
 ]

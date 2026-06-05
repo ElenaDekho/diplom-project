@@ -55,8 +55,9 @@ class User(AbstractUser):
     USER_TYPE_CHOICES = (
         ('buyer', 'Покупатель'),
         ('supplier', 'Поставщик'),
+        ('storekeeper', 'Кладовщик'),
     )
-    type = models.CharField(verbose_name='Тип пользователя', choices=USER_TYPE_CHOICES, max_length=10, default='buyer')
+    type = models.CharField(verbose_name='Тип пользователя', choices=USER_TYPE_CHOICES, max_length=20, default='buyer')
 
     objects = UserManager()
 

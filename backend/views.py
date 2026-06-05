@@ -16,6 +16,8 @@ from backend.models import Shop, STATE_CHOICES
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import RetrieveAPIView
+import csv
+from django.http import HttpResponse
 
 
 class RegisterView(APIView):
@@ -491,3 +493,131 @@ class ConfirmEmailView(APIView):
         user.save()
         confirm_token.delete()
         return Response({"message": "Email подтверждён"}, status=status.HTTP_200_OK)
+
+
+class StorekeeperOrdersView(APIView):
+    def get(self, request):
+        user = request.user
+        if user.type != 'storekeeper':
+            return Response({"error": "Доступ только для кладовщиков"}, status=status.HTTP_403_FORBIDDEN)
+
+        # Фильтр по статусу
+        statuses = request.query_params.getlist('status')
+        if not statuses:
+            statuses = ['confirmed', 'assembled', 'sent']
+
+        orders = Order.objects.filter(state__in=statuses)
+
+        # Фильтр по дате (пример: ?date_from=2024-01-01&date_to=2024-12-31)
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        if date_from:
+            orders = orders.filter(dt__date__gte=date_from)
+        if date_to:
+            orders = orders.filter(dt__date__lte=date_to)
+
+        # Фильтр по магазину (через товары в заказе)
+        shop_id = request.query_params.get('shop')
+        if shop_id:
+            orders = orders.filter(items__product_info__shop_id=shop_id).distinct()
+
+        orders = orders.order_by('-dt')
+
+        result = []
+        for order in orders:
+            result.append({
+                "id": order.id,
+                "dt": order.dt,
+                "state": order.state,
+                "contact": f"{order.contact.city}, {order.contact.street} {order.contact.house}" if order.contact else '',
+                "total": sum(item.quantity * item.product_info.price for item in order.items.all())
+            })
+        return Response(result, status=status.HTTP_200_OK)
+
+class StorekeeperOrderStatusView(APIView):
+    def patch(self, request, pk):
+        user = request.user
+        if user.type != 'storekeeper':
+            return Response({"error": "Доступ только для кладовщиков"}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            order = Order.objects.get(id=pk)
+        except Order.DoesNotExist:
+            return Response({"error": "Заказ не найден"}, status=status.HTTP_404_NOT_FOUND)
+
+        new_status = request.data.get('state')
+        allowed_statuses = ['assembled', 'sent', 'delivered']
+        if new_status not in allowed_statuses:
+            return Response({"error": f"Недопустимый статус. Разрешены: {', '.join(allowed_statuses)}"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        order.state = new_status
+        order.save()
+
+        # Отправка уведомления клиенту
+        state_display = dict(STATE_CHOICES)[order.state]
+        send_mail(
+            subject='Статус заказа изменён',
+            message=f'Ваш заказ №{order.id} теперь в статусе {state_display}.',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[order.user.email],
+            fail_silently=True,
+        )
+
+        return Response({"message": f"Статус заказа изменён на {new_status}"}, status=status.HTTP_200_OK)
+
+
+class StorekeeperExportOrdersView(APIView):
+    def get(self, request):
+        user = request.user
+        if user.type != 'storekeeper':
+            return Response({"error": "Доступ только для кладовщиков"}, status=status.HTTP_403_FORBIDDEN)
+
+        # Фильтрация
+        statuses = request.query_params.getlist('status')
+        if not statuses:
+            statuses = ['confirmed', 'assembled', 'sent']
+
+        orders = Order.objects.filter(state__in=statuses)
+
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        if date_from:
+            orders = orders.filter(dt__date__gte=date_from)
+        if date_to:
+            orders = orders.filter(dt__date__lte=date_to)
+
+        shop_id = request.query_params.get('shop')
+        if shop_id:
+            orders = orders.filter(items__product_info__shop_id=shop_id).distinct()
+
+        orders = orders.order_by('-dt')
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="orders.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow(['ID заказа', 'Дата', 'Статус', 'Клиент', 'Телефон', 'Адрес', 'Сумма', 'Товары'])
+
+        for order in orders:
+            contact = order.contact
+            items_list = []
+            for item in order.items.all():
+                items_list.append(
+                    f"{item.product_info.product.name} ({item.product_info.shop.name}) x{item.quantity} = "
+                    f"{item.quantity * item.product_info.price}р"
+                )
+            items_str = '; '.join(items_list)
+
+            writer.writerow([
+                order.id,
+                order.dt.strftime('%Y-%m-%d %H:%M'),
+                dict(STATE_CHOICES)[order.state],
+                order.user.email,
+                contact.phone if contact else 'Не указан',
+                f"{contact.city}, {contact.street} {contact.house}" if contact else 'Не указан',
+                sum(item.quantity * item.product_info.price for item in order.items.all()),
+                items_str
+            ])
+
+        return response
