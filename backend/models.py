@@ -137,6 +137,7 @@ class Order(models.Model):
     state = models.CharField(verbose_name='Статус', choices=STATE_CHOICES, max_length=15, default='basket')
     contact = models.ForeignKey(Contact, verbose_name='Контакт доставки', null=True, blank=True,
                                 on_delete=models.SET_NULL)
+    confirmed_shops = models.TextField(default='', blank=True, verbose_name='ID подтверждённых магазинов')
 
     class Meta:
         verbose_name = 'Заказ'

@@ -429,27 +429,33 @@ class OrderStatusUpdateView(APIView):
         except Order.DoesNotExist:
             return Response({"error": "Заказ не найден"}, status=status.HTTP_404_NOT_FOUND)
 
-        new_status = request.data.get('state')
-        if new_status not in dict(STATE_CHOICES):
-            return Response({"error": "Неверный статус"}, status=status.HTTP_400_BAD_REQUEST)
+        # Найти магазины поставщика в этом заказе
+        supplier_shops = Shop.objects.filter(user=user)
+        order_items = order.items.filter(product_info__shop__in=supplier_shops)
+        if not order_items.exists():
+            return Response({"error": "В заказе нет ваших товаров"}, status=status.HTTP_400_BAD_REQUEST)
 
-        order.state = new_status
+        # Добавить ID магазинов поставщика в список подтверждённых
+        confirmed = set(order.confirmed_shops.split(',') if order.confirmed_shops else [])
+        for shop in supplier_shops:
+            confirmed.add(str(shop.id))
+        order.confirmed_shops = ','.join(confirmed)
+
+        # Получить все уникальные магазины в заказе
+        all_shops = set(str(item.product_info.shop.id) for item in order.items.all())
+        if all_shops.issubset(confirmed):
+            order.state = 'confirmed'
+            # Отправка письма клиенту (только когда заказ полностью подтверждён)
+            send_mail(
+                subject='Статус заказа изменён',
+                message=f'Ваш заказ №{order.id} теперь в статусе {order.state}.',
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[order.user.email],
+                fail_silently=True,
+            )
+
         order.save()
-        send_mail(
-            subject='Статус заказа изменён',
-            message=f'Ваш заказ №{order.id} теперь в статусе {order.state}.',
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[order.user.email],
-            fail_silently=True,
-        )
-        send_mail(
-            subject='Статус заказа изменён',
-            message=f'Статус вашего заказа №{order.id} изменён на {order.state}.',
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[order.user.email],
-            fail_silently=True,
-        )
-        return Response({"message": f"Статус заказа изменён на {new_status}"}, status=status.HTTP_200_OK)
+        return Response({"message": "Статус обновлён"}, status=status.HTTP_200_OK)
 
 
 class CancelOrderView(APIView):
