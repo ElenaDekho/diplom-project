@@ -448,7 +448,7 @@ class OrderStatusUpdateView(APIView):
             # Отправка письма клиенту (только когда заказ полностью подтверждён)
             send_mail(
                 subject='Статус заказа изменён',
-                message=f'Ваш заказ №{order.id} теперь в статусе {order.state}.',
+                message=f'Ваш заказ №{order.id} теперь в статусе {dict(STATE_CHOICES)[order.state]}.',
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[order.user.email],
                 fail_silently=True,
@@ -551,10 +551,19 @@ class StorekeeperOrderStatusView(APIView):
         except Order.DoesNotExist:
             return Response({"error": "Заказ не найден"}, status=status.HTTP_404_NOT_FOUND)
 
+        # Проверка последовательности статусов
+        allowed_transitions = {
+            'new': ['confirmed'],
+            'confirmed': ['assembled'],
+            'assembled': ['sent'],
+            'sent': ['delivered'],
+            'delivered': [],
+            'canceled': []
+        }
+
         new_status = request.data.get('state')
-        allowed_statuses = ['assembled', 'sent', 'delivered']
-        if new_status not in allowed_statuses:
-            return Response({"error": f"Недопустимый статус. Разрешены: {', '.join(allowed_statuses)}"},
+        if new_status not in allowed_transitions.get(order.state, []):
+            return Response({"error": f"Нельзя изменить статус с {order.state} на {new_status}"},
                             status=status.HTTP_400_BAD_REQUEST)
 
         order.state = new_status
@@ -620,10 +629,54 @@ class StorekeeperExportOrdersView(APIView):
                 order.dt.strftime('%Y-%m-%d %H:%M'),
                 dict(STATE_CHOICES)[order.state],
                 order.user.email,
-                contact.phone if contact else 'Не указан',
-                f"{contact.city}, {contact.street} {contact.house}" if contact else 'Не указан',
+                contact.phone,
+                f"{contact.city}, {contact.street} {contact.house}",
                 sum(item.quantity * item.product_info.price for item in order.items.all()),
                 items_str
+            ])
+
+        return response
+
+
+class ExportProductsView(APIView):
+    def get(self, request):
+        user = request.user
+        if not user.is_authenticated:
+            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
+        if user.type not in ['storekeeper', 'supplier', 'admin']:
+            return Response({"error": "Доступ запрещён"}, status=status.HTTP_403_FORBIDDEN)
+
+        queryset = ProductInfo.objects.all()
+        if user.type == 'supplier':
+            queryset = queryset.filter(shop__user=user)
+
+        # Фильтрация
+        shop_id = request.query_params.get('shop')
+        category_id = request.query_params.get('category')
+        min_quantity = request.query_params.get('min_quantity')
+
+        if shop_id:
+            queryset = queryset.filter(shop_id=shop_id)
+        if category_id:
+            queryset = queryset.filter(product__category_id=category_id)
+        if min_quantity:
+            queryset = queryset.filter(quantity__gte=min_quantity)
+
+        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = 'attachment; filename="products.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow(['ID', 'Название товара', 'Магазин', 'Цена', 'Количество', 'Параметры'])
+
+        for product_info in queryset:
+            params = '; '.join([f"{p.parameter.name}: {p.value}" for p in product_info.parameters.all()])
+            writer.writerow([
+                product_info.id,
+                product_info.product.name,
+                product_info.shop.name,
+                product_info.price,
+                product_info.quantity,
+                params
             ])
 
         return response

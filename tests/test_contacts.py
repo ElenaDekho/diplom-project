@@ -49,10 +49,10 @@ def test_create_contact_limit_exceeded():
     assert response.status_code == 400
     assert response.data['error'] == 'Нельзя добавить более 5 контактов'
 
-# Тест: создание контакта с пустыми обязательными полями
+# Тест: пустые поля контакта → русские сообщения
 @pytest.mark.django_db
-def test_create_contact_invalid_data():
-    user = User.objects.create_user(email='test@test.com', password='testpass')
+def test_create_contact_blank_fields():
+    user = User.objects.create_user(email='test@test.com', password='pass', username='testuser')
     client = APIClient()
     client.force_authenticate(user=user)
     response = client.post('/api/contacts/', {
@@ -62,7 +62,55 @@ def test_create_contact_invalid_data():
         'phone': ''
     })
     assert response.status_code == 400
+    assert response.data['city'][0] == 'Укажите город'
+    assert response.data['street'][0] == 'Укажите улицу'
+    assert response.data['house'][0] == 'Укажите номер дома'
+    assert response.data['phone'][0] == 'Укажите телефон'
+
+# Тест: неверный формат телефона
+@pytest.mark.django_db
+def test_create_contact_invalid_phone():
+    user = User.objects.create_user(email='test@test.com', password='pass', username='testuser')
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.post('/api/contacts/', {
+        'city': 'Moscow',
+        'street': 'Tverskaya',
+        'house': '1',
+        'phone': 'abc123'
+    })
+    assert response.status_code == 400
+    assert 'Телефон должен содержать только цифры и может начинаться с +' in response.data['phone'][0]
+
+# Тест: отсутствие обязательного поля city
+@pytest.mark.django_db
+def test_create_contact_missing_city():
+    user = User.objects.create_user(email='test@test.com', password='pass', username='testuser')
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.post('/api/contacts/', {
+        'street': 'Tverskaya',
+        'house': '1',
+        'phone': '+79161234567'
+    })
+    assert response.status_code == 400
     assert 'city' in response.data
+
+# Тест: успешное создание контакта
+@pytest.mark.django_db
+def test_create_contact_success():
+    user = User.objects.create_user(email='test@test.com', password='pass', username='testuser')
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.post('/api/contacts/', {
+        'city': 'Moscow',
+        'street': 'Tverskaya',
+        'house': '15',
+        'phone': '+79161234567'
+    })
+    assert response.status_code == 201
+    assert response.data['city'] == 'Moscow'
+    assert Contact.objects.filter(user=user, phone='+79161234567').exists()
 
 # Тест: успешное получение списка контактов
 @pytest.mark.django_db
