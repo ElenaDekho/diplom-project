@@ -6,6 +6,7 @@ import re
 from django.core.mail import send_mail
 from django.conf import settings
 import uuid
+from .tasks import send_email_task
 
 
 class UserRegisterSerializer(serializers.Serializer):
@@ -31,7 +32,7 @@ class UserRegisterSerializer(serializers.Serializer):
         )
         token = str(uuid.uuid4())
         EmailConfirmationToken.objects.create(user=user, token=token)
-        send_mail(
+        send_email_task.delay(
             subject='Подтверждение регистрации',
             message=f'Перейдите по ссылке: http://127.0.0.1:8000/api/confirm-email/{token}/',
             from_email=settings.DEFAULT_FROM_EMAIL,

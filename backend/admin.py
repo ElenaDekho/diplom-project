@@ -36,3 +36,23 @@ class OrderAdmin(admin.ModelAdmin):
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
     pass
+
+@admin.action(description='Запустить асинхронный импорт для выбранных магазинов')
+def run_import(modeladmin, request, queryset):
+    from .tasks import do_import_task
+    for shop in queryset:
+        if shop.yaml_file:
+            do_import_task.delay(shop.yaml_file)
+        else:
+            modeladmin.message_user(request, f'Магазин "{shop.name}" не имеет файла импорта', level='ERROR')
+
+# Если модель уже зарегистрирована, сначала удалим
+try:
+    admin.site.unregister(Shop)
+except admin.sites.NotRegistered:
+    pass
+
+@admin.register(Shop)
+class ShopAdmin(admin.ModelAdmin):
+    actions = [run_import]
+    list_display = ('name', 'user', 'yaml_file')

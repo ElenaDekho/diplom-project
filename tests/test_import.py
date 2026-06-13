@@ -6,6 +6,8 @@ from import_data import import_from_yaml
 import tempfile
 import yaml
 from rest_framework.test import APIClient
+from celery import current_app
+from backend.tasks import do_import_task
 
 
 # ========== 1. НЕТ ПОЧТЫ ==========
@@ -417,9 +419,10 @@ def test_update_both_price_and_quantity():
 ### ИМПОРТ ПОСТАВЩИКОМ ###
 #=======================================================#
 
-# Тест: успешный импорт прайса
+# Тест: успешный импорт прайса (асинхронный)
 @pytest.mark.django_db
 def test_import_price_success():
+    current_app.conf.update(CELERY_TASK_ALWAYS_EAGER=True)
     user = User.objects.create_user(email='supplier@test.com', password='testpass', username='supplier',
                                     type='supplier')
     shop = Shop.objects.create(name='Test Shop', user=user, yaml_file='temp_import.yaml')
@@ -461,3 +464,20 @@ def test_import_price_wrong_shop():
     response = client.post('/api/import/', {'shop_id': 999})
     assert response.status_code == 404
     assert response.data['error'] == 'Магазин не найден или не принадлежит вам'
+
+
+# Тест на обработку ошибки импорта
+@pytest.mark.django_db
+def test_import_task_handles_exception():
+    current_app.conf.update(CELERY_TASK_ALWAYS_EAGER=True)
+
+    user = User.objects.create_user(email='supplier@test.com', password='pass', username='supplier', type='supplier')
+    shop = Shop.objects.create(name='Test Shop', user=user, yaml_file='dummy.yaml')
+
+    with patch('backend.tasks.import_from_yaml') as mock_import:
+        mock_import.side_effect = Exception("Network error")
+
+        result = do_import_task.apply(args=[shop.yaml_file])
+
+        assert result.failed()
+        assert isinstance(result.result, Exception)

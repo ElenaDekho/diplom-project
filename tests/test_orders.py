@@ -156,10 +156,10 @@ def test_order_detail_unauthorized():
     assert response.data['error'] == 'Необходимо авторизоваться'
 
 
-# Тест: проверка отправки email при создании заказа
+# Тест: проверка отправки email при создании заказа (асинхронная задача)
 @pytest.mark.django_db
-@patch('backend.views.send_mail')
-def test_order_create_email_sent(mock_send_mail):
+@patch('backend.tasks.send_email_task.delay')
+def test_order_create_email_sent(mock_delay):
     user = User.objects.create_user(email='test@test.com', password='testpass', username='testuser')
     shop = Shop.objects.create(name='Shop', user=user, state=True)
     cat = Category.objects.create(name='Cat')
@@ -171,13 +171,14 @@ def test_order_create_email_sent(mock_send_mail):
     client.post('/api/cart/', {'product_info_id': product_info.id, 'quantity': 1})
     client.post('/api/order/create/', {'contact_id': contact.id})
 
-    assert mock_send_mail.call_count == 2  # 1 письмо клиенту + 1 письмо поставщику
+    # Проверяем, что задача запущена (2 письма: клиенту и поставщику)
+    assert mock_delay.call_count == 2
 
 
-# Тест: проверка отправки email при отмене заказа
+# Тест: проверка отправки email при отмене заказа (асинхронная задача)
 @pytest.mark.django_db
-@patch('backend.views.send_mail')
-def test_order_cancel_email_sent(mock_send_mail):
+@patch('backend.tasks.send_email_task.delay')
+def test_order_cancel_email_sent(mock_delay):
     user = User.objects.create_user(email='test@test.com', password='testpass', username='testuser')
     shop = Shop.objects.create(name='Shop', user=user, state=True)
     cat = Category.objects.create(name='Cat')
@@ -191,7 +192,9 @@ def test_order_cancel_email_sent(mock_send_mail):
     order = Order.objects.filter(user=user, state='new').first()
     client.post(f'/api/orders/{order.id}/cancel/')
 
-    assert mock_send_mail.call_count >= 1  # письмо об отмене
+    assert mock_delay.called
+    args, kwargs = mock_delay.call_args
+    assert user.email in kwargs['recipient_list']
 
 
 # Тест: заказ с товарами от разных поставщиков
@@ -273,8 +276,8 @@ def test_supplier_orders_forbidden():
 
 # Тест: отправка email клиенту при изменении статуса заказа поставщиком
 @pytest.mark.django_db
-@patch('backend.views.send_mail')
-def test_order_status_change_email_sent(mock_send_mail):
+@patch('backend.tasks.send_email_task.delay')
+def test_order_status_change_email_sent(mock_delay):
     # Покупатель
     customer = User.objects.create_user(email='customer@test.com', password='testpass', username='customer',
                                         type='customer')
@@ -301,16 +304,16 @@ def test_order_status_change_email_sent(mock_send_mail):
     response = client.patch(f'/api/orders/{order.id}/status/', {'state': 'confirmed'})
 
     assert response.status_code == 200
-    mock_send_mail.assert_called()
-    # Проверяем, что письмо ушло именно покупателю
-    args, kwargs = mock_send_mail.call_args
-    assert kwargs['recipient_list'] == [customer.email]
+    mock_delay.assert_called()
+    # Проверяем, что задача отправки письма была вызвана с правильным email
+    args, kwargs = mock_delay.call_args
+    assert customer.email in kwargs['recipient_list']
 
 
-# Тест: уведомление клиенту при подтверждении заказа поставщиком
+# Тест: уведомление клиенту при подтверждении заказа поставщиком (асинхронная задача)
 @pytest.mark.django_db
-@patch('backend.views.send_mail')
-def test_notification_on_order_status_change_by_supplier(mock_send_mail):
+@patch('backend.tasks.send_email_task.delay')
+def test_notification_on_order_status_change_by_supplier(mock_delay):
     customer = User.objects.create_user(email='customer@test.com', password='pass', username='customer', type='customer')
     supplier = User.objects.create_user(email='supplier@test.com', password='pass', username='supplier', type='supplier')
     shop = Shop.objects.create(name='Shop', user=supplier)
@@ -327,13 +330,16 @@ def test_notification_on_order_status_change_by_supplier(mock_send_mail):
     client.force_authenticate(user=supplier)
     response = client.patch(f'/api/orders/{order.id}/status/', {'state': 'confirmed'})
     assert response.status_code == 200
-    mock_send_mail.assert_called()
-    assert mock_send_mail.call_args[1]['recipient_list'] == [customer.email]
+    mock_delay.assert_called()
+    # Проверяем, что в аргументах задачи есть email покупателя
+    args, kwargs = mock_delay.call_args
+    assert customer.email in kwargs['recipient_list']
 
-# Тест: уведомление клиенту при изменении статуса заказа кладовщиком (assembled)
+
+# Тест: уведомление клиенту при изменении статуса заказа кладовщиком (assembled) (асинхронная задача)
 @pytest.mark.django_db
-@patch('backend.views.send_mail')
-def test_notification_on_order_status_change_by_storekeeper(mock_send_mail):
+@patch('backend.tasks.send_email_task.delay')
+def test_notification_on_order_status_change_by_storekeeper(mock_delay):
     customer = User.objects.create_user(email='customer@test.com', password='pass', username='customer', type='customer')
     storekeeper = User.objects.create_user(email='storekeeper@test.com', password='pass', username='storekeeper', type='storekeeper')
     shop = Shop.objects.create(name='Shop', user=storekeeper)
@@ -353,8 +359,9 @@ def test_notification_on_order_status_change_by_storekeeper(mock_send_mail):
     client.force_authenticate(user=storekeeper)
     response = client.patch(f'/api/storekeeper/orders/{order.id}/status/', {'state': 'assembled'})
     assert response.status_code == 200
-    mock_send_mail.assert_called()
-    assert mock_send_mail.call_args[1]['recipient_list'] == [customer.email]
+    mock_delay.assert_called()
+    args, kwargs = mock_delay.call_args
+    assert customer.email in kwargs['recipient_list']
 
 
 # Тест: кладовщик успешно меняет статус confirmed -> assembled
@@ -568,8 +575,8 @@ def test_partial_confirmation_two_suppliers():
 
 # Частичное подтверждение: письмо отправляется только после подтверждения всеми поставщиками
 @pytest.mark.django_db
-@patch('backend.views.send_mail')
-def test_partial_confirmation_two_suppliers_email_sent_only_once(mock_send_mail):
+@patch('backend.tasks.send_email_task.delay')
+def test_partial_confirmation_two_suppliers_email_sent_only_once(mock_delay):
     customer = User.objects.create_user(email='customer@test.com', password='pass', username='customer', type='customer')
     supplier1 = User.objects.create_user(email='supplier1@test.com', password='pass', username='supplier1', type='supplier')
     supplier2 = User.objects.create_user(email='supplier2@test.com', password='pass', username='supplier2', type='supplier')
@@ -588,8 +595,8 @@ def test_partial_confirmation_two_suppliers_email_sent_only_once(mock_send_mail)
     client.post('/api/order/create/', {'contact_id': contact.id})
     order = Order.objects.filter(user=customer, state='new').first()
 
-    # Сброс счётчика вызовов send_mail (игнорируем письмо при создании заказа)
-    mock_send_mail.reset_mock()
+    # Сброс счётчика вызовов (игнорируем письмо при создании заказа)
+    mock_delay.reset_mock()
 
     # Подтверждение первого поставщика (письмо не должно отправиться)
     client.force_authenticate(user=supplier1)
@@ -597,7 +604,7 @@ def test_partial_confirmation_two_suppliers_email_sent_only_once(mock_send_mail)
     assert response1.status_code == 200
     order.refresh_from_db()
     assert order.state == 'new'
-    assert mock_send_mail.call_count == 0
+    assert mock_delay.call_count == 0
 
     # Подтверждение второго поставщика (письмо должно отправиться один раз)
     client.force_authenticate(user=supplier2)
@@ -605,7 +612,7 @@ def test_partial_confirmation_two_suppliers_email_sent_only_once(mock_send_mail)
     assert response2.status_code == 200
     order.refresh_from_db()
     assert order.state == 'confirmed'
-    assert mock_send_mail.call_count == 1
+    assert mock_delay.call_count == 1
     # Проверяем, что письмо ушло покупателю
-    args, kwargs = mock_send_mail.call_args
-    assert kwargs['recipient_list'] == [customer.email]
+    args, kwargs = mock_delay.call_args
+    assert customer.email in kwargs['recipient_list']

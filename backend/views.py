@@ -17,7 +17,10 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import RetrieveAPIView
 import csv
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
+from .tasks import send_email_task, do_import_task, do_export_orders_task, do_export_products_task
+import time
+import os
 
 
 class RegisterView(APIView):
@@ -230,7 +233,7 @@ class OrderCreateView(APIView):
         total = sum(item.quantity * item.product_info.price for item in cart.items.all())
 
         # Письмо клиенту
-        send_mail(
+        send_email_task.delay(
             subject='Заказ оформлен',
             message=f'Ваш заказ №{cart.id} на сумму {total} руб. оформлен.',
             from_email=settings.DEFAULT_FROM_EMAIL,
@@ -244,7 +247,7 @@ class OrderCreateView(APIView):
             supplier_emails.add(item.product_info.shop.user.email)
 
         for email in supplier_emails:
-            send_mail(
+            send_email_task.delay(
                 subject='Новый заказ',
                 message=f'Поступил заказ №{cart.id}.',
                 from_email=settings.DEFAULT_FROM_EMAIL,
@@ -388,7 +391,7 @@ class ImportPriceView(APIView):
             return Response({"error": "Для магазина не указан yaml_file"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            import_from_yaml(shop.yaml_file)
+            do_import_task.delay(shop.yaml_file)
             return Response({"message": f"Импорт для магазина {shop.name} выполнен"}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -446,7 +449,7 @@ class OrderStatusUpdateView(APIView):
         if all_shops.issubset(confirmed):
             order.state = 'confirmed'
             # Отправка письма клиенту (только когда заказ полностью подтверждён)
-            send_mail(
+            send_email_task.delay(
                 subject='Статус заказа изменён',
                 message=f'Ваш заказ №{order.id} теперь в статусе {dict(STATE_CHOICES)[order.state]}.',
                 from_email=settings.DEFAULT_FROM_EMAIL,
@@ -474,7 +477,7 @@ class CancelOrderView(APIView):
 
         order.state = 'canceled'
         order.save()
-        send_mail(
+        send_email_task.delay(
             subject='Заказ отменён',
             message=f'Ваш заказ №{order.id} был отменён.',
             from_email=settings.DEFAULT_FROM_EMAIL,
@@ -571,7 +574,7 @@ class StorekeeperOrderStatusView(APIView):
 
         # Отправка уведомления клиенту
         state_display = dict(STATE_CHOICES)[order.state]
-        send_mail(
+        send_email_task.delay(
             subject='Статус заказа изменён',
             message=f'Ваш заказ №{order.id} теперь в статусе {state_display}.',
             from_email=settings.DEFAULT_FROM_EMAIL,
@@ -584,58 +587,35 @@ class StorekeeperOrderStatusView(APIView):
 
 class StorekeeperExportOrdersView(APIView):
     def get(self, request):
+        # 1. Проверка прав доступа
         user = request.user
         if user.type != 'storekeeper':
             return Response({"error": "Доступ только для кладовщиков"}, status=status.HTTP_403_FORBIDDEN)
 
-        # Фильтрация
-        statuses = request.query_params.getlist('status')
-        if not statuses:
-            statuses = ['confirmed', 'assembled', 'sent']
+        # 2. Подготовка параметров фильтрации
+        filters = {
+            'status': request.query_params.getlist('status'),
+            'date_from': request.query_params.get('date_from'),
+            'date_to': request.query_params.get('date_to'),
+            'shop': request.query_params.get('shop')
+        }
 
-        orders = Order.objects.filter(state__in=statuses)
+        # 3. Запуск Celery-задачи и получение ID
+        task = do_export_orders_task.delay(user.id, filters)
 
-        date_from = request.query_params.get('date_from')
-        date_to = request.query_params.get('date_to')
-        if date_from:
-            orders = orders.filter(dt__date__gte=date_from)
-        if date_to:
-            orders = orders.filter(dt__date__lte=date_to)
+        # 4. Ожидание результата
+        try:
+            # timeout=60 — ждём до 60 секунд, иначе вернём ошибку
+            file_path = task.get(timeout=60)
+        except Exception as e:
+            return Response({"error": f"Ошибка при выполнении экспорта: {e}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        shop_id = request.query_params.get('shop')
-        if shop_id:
-            orders = orders.filter(items__product_info__shop_id=shop_id).distinct()
-
-        orders = orders.order_by('-dt')
-
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="orders.csv"'
-
-        writer = csv.writer(response)
-        writer.writerow(['ID заказа', 'Дата', 'Статус', 'Клиент', 'Телефон', 'Адрес', 'Сумма', 'Товары'])
-
-        for order in orders:
-            contact = order.contact
-            items_list = []
-            for item in order.items.all():
-                items_list.append(
-                    f"{item.product_info.product.name} ({item.product_info.shop.name}) x{item.quantity} = "
-                    f"{item.quantity * item.product_info.price}р"
-                )
-            items_str = '; '.join(items_list)
-
-            writer.writerow([
-                order.id,
-                order.dt.strftime('%Y-%m-%d %H:%M'),
-                dict(STATE_CHOICES)[order.state],
-                order.user.email,
-                contact.phone,
-                f"{contact.city}, {contact.street} {contact.house}",
-                sum(item.quantity * item.product_info.price for item in order.items.all()),
-                items_str
-            ])
-
-        return response
+        # 5. Отдача файла пользователю
+        if os.path.exists(file_path):
+            return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=os.path.basename(file_path))
+        else:
+            return Response({"error": "Файл не найден"}, status=status.HTTP_404_NOT_FOUND)
 
 
 class ExportProductsView(APIView):
@@ -646,37 +626,23 @@ class ExportProductsView(APIView):
         if user.type not in ['storekeeper', 'supplier', 'admin']:
             return Response({"error": "Доступ запрещён"}, status=status.HTTP_403_FORBIDDEN)
 
-        queryset = ProductInfo.objects.all()
-        if user.type == 'supplier':
-            queryset = queryset.filter(shop__user=user)
+        filters = {
+            'shop': request.query_params.get('shop'),
+            'category': request.query_params.get('category'),
+            'min_quantity': request.query_params.get('min_quantity')
+        }
 
-        # Фильтрация
-        shop_id = request.query_params.get('shop')
-        category_id = request.query_params.get('category')
-        min_quantity = request.query_params.get('min_quantity')
+        # Запускаем асинхронную задачу
+        task = do_export_products_task.delay(user.id, filters)
 
-        if shop_id:
-            queryset = queryset.filter(shop_id=shop_id)
-        if category_id:
-            queryset = queryset.filter(product__category_id=category_id)
-        if min_quantity:
-            queryset = queryset.filter(quantity__gte=min_quantity)
+        # Ждём результат
+        try:
+            file_path = task.get(timeout=60)
+        except Exception as e:
+            return Response({"error": f"Ошибка экспорта: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-        response['Content-Disposition'] = 'attachment; filename="products.csv"'
-
-        writer = csv.writer(response)
-        writer.writerow(['ID', 'Название товара', 'Магазин', 'Цена', 'Количество', 'Параметры'])
-
-        for product_info in queryset:
-            params = '; '.join([f"{p.parameter.name}: {p.value}" for p in product_info.parameters.all()])
-            writer.writerow([
-                product_info.id,
-                product_info.product.name,
-                product_info.shop.name,
-                product_info.price,
-                product_info.quantity,
-                params
-            ])
-
-        return response
+        # Отдаём файл
+        if os.path.exists(file_path):
+            return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=os.path.basename(file_path))
+        else:
+            return Response({"error": "Файл не найден"}, status=status.HTTP_404_NOT_FOUND)

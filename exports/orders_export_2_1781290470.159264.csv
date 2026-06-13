@@ -1,0 +1,2 @@
+﻿ID заказа,Дата,Статус,Клиент,Телефон,Адрес,Сумма,Товары
+1,2026-06-12 18:54,confirmed,customer@test.com,123,"City, Street 1",500,Product1 (Shop1) x1 = 100р; Product2 (Shop2) x2 = 400р
