@@ -24,7 +24,7 @@ def test_add_to_cart_unauthorized():
     client = APIClient()
     response = client.post('/api/cart/', {'product_info_id': 1, 'quantity': 1})
     assert response.status_code == 401
-    assert response.data['error'] == 'Необходимо авторизоваться'
+    assert 'detail' in response.data
 
 # Тест: количество не число
 @pytest.mark.django_db
@@ -115,7 +115,7 @@ def test_get_cart_unauthorized():
     client = APIClient()
     response = client.get('/api/cart/')
     assert response.status_code == 401
-    assert response.data['error'] == 'Необходимо авторизоваться'
+    assert 'detail' in response.data
 
 # Тест: успешное удаление товара из корзины
 @pytest.mark.django_db
@@ -153,7 +153,7 @@ def test_delete_cart_item_unauthorized():
     client = APIClient()
     response = client.delete('/api/cart/', {'product_info_id': 1})
     assert response.status_code == 401
-    assert response.data['error'] == 'Необходимо авторизоваться'
+    assert 'detail' in response.data
 
 # Тест: не указан товар
 @pytest.mark.django_db
@@ -181,7 +181,7 @@ def test_update_cart_unauthorized():
     client = APIClient()
     response = client.put('/api/cart/', {'product_info_id': 1, 'quantity': 2})
     assert response.status_code == 401
-    assert response.data['error'] == 'Необходимо авторизоваться'
+    assert 'detail' in response.data
 
 # Тест: не указан товар или количество
 @pytest.mark.django_db
@@ -257,4 +257,37 @@ def test_update_cart_invalid_quantity():
     response = client.put('/api/cart/', {'product_info_id': 1, 'quantity': 'abc'})
     assert response.status_code == 400
     assert response.data['error'] == 'Количество должно быть числом'
+
+# Тест: добавление в корзину с количеством больше остатка
+@pytest.mark.django_db
+def test_add_to_cart_insufficient_stock():
+    user = User.objects.create_user(email='test@test.com', password='pass', username='test')
+    shop = Shop.objects.create(name='Shop', user=user)
+    cat = Category.objects.create(name='Cat')
+    product = Product.objects.create(name='Product', category=cat)
+    product_info = ProductInfo.objects.create(product=product, shop=shop, price=100, quantity=5)
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.post('/api/cart/', {'product_info_id': product_info.id, 'quantity': 10})
+    assert response.status_code == 400
+    assert response.data['error'] == 'Недостаточно товара на складе'
+
+# Тест: изменение количества в корзине на значение больше остатка
+@pytest.mark.django_db
+def test_update_cart_insufficient_stock():
+    user = User.objects.create_user(email='test@test.com', password='pass', username='test')
+    shop = Shop.objects.create(name='Shop', user=user)
+    cat = Category.objects.create(name='Cat')
+    product = Product.objects.create(name='Product', category=cat)
+    product_info = ProductInfo.objects.create(product=product, shop=shop, price=100, quantity=5)
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    # Сначала добавляем товар в корзину (количество 2, остаток 5 — допустимо)
+    client.post('/api/cart/', {'product_info_id': product_info.id, 'quantity': 2})
+    # Пытаемся изменить количество на 10 (больше остатка)
+    response = client.put('/api/cart/', {'product_info_id': product_info.id, 'quantity': 10})
+    assert response.status_code == 400
+    assert response.data['error'] == 'Недостаточно товара на складе'
 

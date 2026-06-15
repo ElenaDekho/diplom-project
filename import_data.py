@@ -11,6 +11,7 @@ from users.models import User
 
 
 def import_from_yaml(file_path):
+    print(f"DEBUG: Начался импорт файла {file_path}")
     if not file_path:
         print(f"ОШИБКА: Не указан путь к файлу для магазина")
         return
@@ -40,19 +41,19 @@ def import_from_yaml(file_path):
     shop_name = data['shop']
     owner_email = data.get('owner_email')
 
-    # 1. НЕТ ПОЧТЫ
+    # НЕТ ПОЧТЫ
     if not owner_email:
         print("ОШИБКА: Нет owner_email в файле")
         return
 
-    # 2. НЕТ ПОСТАВЩИКА
+    # НЕТ ПОСТАВЩИКА
     try:
         owner = User.objects.get(email=owner_email, type='supplier')
     except User.DoesNotExist:
         print(f"ОШИБКА: Поставщик '{owner_email}' не найден.")
         return
 
-    # 3. НЕТ МАГАЗИНА
+    # НЕТ МАГАЗИНА
     try:
         shop = Shop.objects.get(name=shop_name, user=owner)
     except Shop.DoesNotExist:
@@ -73,20 +74,20 @@ def import_from_yaml(file_path):
                 cat_name_in_file = c['name']
                 break
 
-        # 5. НЕТ ОПИСАНИЯ КАТЕГОРИИ
+        # НЕТ ОПИСАНИЯ КАТЕГОРИИ
         if not cat_name_in_file:
             bad_cats.append(f"ID {cid}: Нет описания в файле YAML")
             continue
 
         try:
             db_cat = Category.objects.get(id=cid)
-            # 6. НЕВЕРНОЕ НАЗВАНИЕ КАТЕГОРИИ
+            # НЕВЕРНОЕ НАЗВАНИЕ КАТЕГОРИИ
             if db_cat.name != cat_name_in_file:
                 bad_cats.append(f"ID {cid}: Конфликт имен. В базе: '{db_cat.name}', В файле: '{cat_name_in_file}'")
             else:
                 valid_cats[cid] = db_cat
         except Category.DoesNotExist:
-            # 4. НОВАЯ КАТЕГОРИЯ
+            # НОВАЯ КАТЕГОРИЯ
             new_cat = Category.objects.create(id=cid, name=cat_name_in_file)
             valid_cats[cid] = new_cat
             print(f"Создана новая категория: '{cat_name_in_file}' (ID: {cid})")
@@ -114,17 +115,24 @@ def import_from_yaml(file_path):
             rejected += 1
             continue
 
-        # 9. ТОВАР БЕЗ НАЗВАНИЯ
+        # ТОВАР БЕЗ НАЗВАНИЯ
         name = item.get('name')
         if not name or not str(name).strip():
             print(f"ОШИБКА: Товар в категории {cid} не имеет названия. Пропущено.")
             rejected += 1
             continue
 
-        # 10. ТОВАР БЕЗ ЦЕНЫ
+        # ТОВАР БЕЗ ЦЕНЫ
         price = item.get('price')
         if price is None:
             print(f"ОШИБКА: Товар '{name}' не имеет цены. Пропущено.")
+            rejected += 1
+            continue
+
+        # ТОВАР С НУЛЕВЫМ ИЛИ ОТРИЦАТЕЛЬНЫМ КОЛИЧЕСТВОМ
+        quantity = item.get('quantity', 0)
+        if quantity <= 0:
+            print(f"ОШИБКА: Товар '{name}' пропущен. Количество должно быть больше 0, получено: {quantity}")
             rejected += 1
             continue
 
@@ -159,7 +167,7 @@ def import_from_yaml(file_path):
             created_info = True
 
         if created_info:
-            # 7. УСПЕШНЫЙ ИМПОРТ / 8. ТОВАР БЕЗ ПАРАМЕТРОВ
+            # УСПЕШНЫЙ ИМПОРТ / 8. ТОВАР БЕЗ ПАРАМЕТРОВ
             for pname, pval in params_dict.items():
                 param, _ = Parameter.objects.get_or_create(name=pname)
                 ProductParameter.objects.create(
@@ -169,7 +177,7 @@ def import_from_yaml(file_path):
                 )
             added += 1
         else:
-            # 11. ТОВАР УЖЕ СУЩЕСТВУЕТ
+            # ТОВАР УЖЕ СУЩЕСТВУЕТ
             old_price = info.price
             old_quantity = info.quantity
 
@@ -178,7 +186,7 @@ def import_from_yaml(file_path):
 
             is_updated = False
 
-            # 13. ОБНОВЛЯЕТСЯ ЦЕНА (независимо от количества)
+            # ОБНОВЛЯЕТСЯ ЦЕНА (независимо от количества)
             if old_price != new_price:
                 info.price = new_price
                 info.price_rrc = item.get('price_rrc', new_price)
@@ -186,12 +194,12 @@ def import_from_yaml(file_path):
                 updated_price += 1
                 is_updated = True
 
-            # 14. ОБНОВЛЯЕТСЯ КОЛИЧЕСТВО (независимо от цены)
+            # ОБНОВЛЯЕТСЯ КОЛИЧЕСТВО (независимо от цены)
             if old_quantity != new_quantity:
                 info.quantity = new_quantity
                 is_updated = True
 
-            # 15. ОБНОВИЛОСЬ И ТО, И ДРУГОЕ (логика выше покрывает это автоматически)
+            # ОБНОВИЛОСЬ И ТО, И ДРУГОЕ (логика выше покрывает это автоматически)
             if is_updated:
                 info.save()
             else:

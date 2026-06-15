@@ -30,7 +30,7 @@ def test_create_contact_unauthorized():
         'phone': '+79991234567'
     })
     assert response.status_code == 401
-    assert response.data['error'] == 'Необходимо авторизоваться'
+    assert 'detail' in response.data
 
 # Тест: создание контакта при превышении лимита (5)
 @pytest.mark.django_db
@@ -130,7 +130,7 @@ def test_get_contacts_unauthorized():
     client = APIClient()
     response = client.get('/api/contacts/')
     assert response.status_code == 401
-    assert response.data['error'] == 'Необходимо авторизоваться'
+    assert 'detail' in response.data
 
 # Тест: у пользователя нет контактов
 @pytest.mark.django_db
@@ -182,4 +182,4 @@ def test_delete_contact_unauthorized():
     client = APIClient()
     response = client.delete('/api/contacts/1/')
     assert response.status_code == 401
-    assert response.data['error'] == 'Необходимо авторизоваться'
+    assert 'detail' in response.data

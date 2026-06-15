@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from users.models import User, EmailConfirmationToken
 from django.contrib.auth import authenticate
-from backend.models import ProductInfo, ProductParameter, Contact
+from backend.models import ProductInfo, ProductParameter, Contact, Favorite
 import re
 from django.core.mail import send_mail
 from django.conf import settings
@@ -84,3 +84,21 @@ class ContactSerializer(serializers.ModelSerializer):
         if not re.match(r'^\+?\d+$', value):
             raise serializers.ValidationError("Телефон должен содержать только цифры и может начинаться с +")
         return value
+
+
+class FavoriteSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product_info.product.name', read_only=True)
+    shop_name = serializers.CharField(source='product_info.shop.name', read_only=True)
+    price = serializers.IntegerField(source='product_info.price', read_only=True)
+
+    class Meta:
+        model = Favorite
+        fields = ['id', 'product_info', 'product_name', 'shop_name', 'price', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def validate(self, data):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            if Favorite.objects.filter(user=request.user, product_info=data['product_info']).exists():
+                raise serializers.ValidationError("Товар уже в избранном")
+        return data

@@ -555,7 +555,7 @@ def test_export_products_unauthorized():
     client = APIClient()
     response = client.get('/api/export/products/')
     assert response.status_code == 401
-    assert response.data['error'] == 'Необходимо авторизоваться'
+    assert 'detail' in response.data
 
 # 11. Поставщик пытается экспортировать чужой магазин (асинхронный)
 @pytest.mark.django_db

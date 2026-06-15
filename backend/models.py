@@ -169,3 +169,14 @@ class PasswordResetToken(models.Model):
 
     def is_valid(self):
         return (timezone.now() - self.created_at).seconds < 3600  # 1 час
+
+
+class Favorite(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorites')
+    product_info = models.ForeignKey(ProductInfo, on_delete=models.CASCADE, related_name='favorited_by')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'product_info')
+        verbose_name = 'Избранное'
+        verbose_name_plural = 'Избранное'

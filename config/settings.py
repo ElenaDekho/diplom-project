@@ -175,10 +175,12 @@ LOGGING = {
     'loggers': {
         'celery': {
             'handlers': ['console', 'file'],
-            'level': 'ERROR',
+            'level': 'INFO',
         },
     },
 }
+
+
 
 
 

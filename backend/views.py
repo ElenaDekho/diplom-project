@@ -4,18 +4,18 @@ from rest_framework import status
 from .serializers import UserRegisterSerializer, ContactSerializer
 from rest_framework.authtoken.models import Token
 from .serializers import UserLoginSerializer
-from rest_framework.generics import ListAPIView
-from .serializers import ProductInfoSerializer
-from backend.models import Order, OrderItem, ProductInfo, Contact, PasswordResetToken
+from rest_framework.generics import ListAPIView, RetrieveAPIView, ListCreateAPIView, DestroyAPIView
+from .serializers import ProductInfoSerializer, FavoriteSerializer
+from backend.models import Order, OrderItem, ProductInfo, Contact, PasswordResetToken, Favorite
 from django.core.mail import send_mail
 from django.conf import settings
 import uuid
 from users.models import User, EmailConfirmationToken
+from rest_framework.permissions import IsAuthenticated
 from import_data import import_from_yaml
 from backend.models import Shop, STATE_CHOICES
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
-from rest_framework.generics import RetrieveAPIView
 import csv
 from django.http import HttpResponse, FileResponse
 from .tasks import send_email_task, do_import_task, do_export_orders_task, do_export_products_task
@@ -51,10 +51,10 @@ class ProductListView(ListAPIView):
 
 
 class CartView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
 
         cart, _ = Order.objects.get_or_create(user=user, state='basket')
         items = cart.items.all()
@@ -75,8 +75,6 @@ class CartView(APIView):
 
     def post(self, request):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
 
         product_info_id = request.data.get('product_info_id')
         try:
@@ -95,6 +93,9 @@ class CartView(APIView):
                 return Response({"error": "Магазин не принимает заказы"}, status=status.HTTP_400_BAD_REQUEST)
             if product_info.quantity <= 0:
                 return Response({"error": "Товар отсутствует на складе"}, status=status.HTTP_400_BAD_REQUEST)
+            # Проверка остатка
+            if quantity > product_info.quantity:
+                return Response({"error": "Недостаточно товара на складе"}, status=status.HTTP_400_BAD_REQUEST)
         except ProductInfo.DoesNotExist:
             return Response({"error": "Товар не найден"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -113,8 +114,6 @@ class CartView(APIView):
 
     def delete(self, request):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
 
         product_info_id = request.data.get('product_info_id')
         if not product_info_id:
@@ -133,8 +132,6 @@ class CartView(APIView):
 
     def put(self, request):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
 
         product_info_id = request.data.get('product_info_id')
         quantity = request.data.get('quantity')
@@ -153,6 +150,8 @@ class CartView(APIView):
 
         try:
             order_item = OrderItem.objects.get(order=cart, product_info_id=product_info_id)
+            if quantity > order_item.product_info.quantity:
+                return Response({"error": "Недостаточно товара на складе"}, status=status.HTTP_400_BAD_REQUEST)
             if quantity <= 0:
                 order_item.delete()
                 return Response({"message": "Товар удален из корзины"}, status=status.HTTP_200_OK)
@@ -164,10 +163,10 @@ class CartView(APIView):
             return Response({"error": "Товар не найден в корзине"}, status=status.HTTP_404_NOT_FOUND)
 
 class ContactView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
 
         if Contact.objects.filter(user=user).count() >= 5:
             return Response({"error": "Нельзя добавить более 5 контактов"}, status=status.HTTP_400_BAD_REQUEST)
@@ -180,8 +179,6 @@ class ContactView(APIView):
 
     def get(self, request):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
 
         contacts = Contact.objects.filter(user=user)
         serializer = ContactSerializer(contacts, many=True)
@@ -189,10 +186,10 @@ class ContactView(APIView):
 
 
 class ContactDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def delete(self, request, pk):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
             contact = Contact.objects.get(id=pk, user=user)
@@ -203,10 +200,10 @@ class ContactDetailView(APIView):
 
 
 class OrderCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
 
         contact_id = request.data.get('contact_id')
         if not contact_id:
@@ -225,9 +222,23 @@ class OrderCreateView(APIView):
             if not item.product_info.shop.state:
                 return Response({"error": "Один из магазинов не принимает заказы"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Проверка остатков
+        for item in cart.items.all():
+            if item.quantity > item.product_info.quantity:
+                return Response(
+                    {"error": f"Недостаточно товара '{item.product_info.product.name}' на складе"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         cart.state = 'new'
         cart.contact = contact
         cart.save()
+
+        # Уменьшаем остатки товаров
+        for item in cart.items.all():
+            product_info = item.product_info
+            product_info.quantity -= item.quantity
+            product_info.save()
 
         # Подсчёт суммы
         total = sum(item.quantity * item.product_info.price for item in cart.items.all())
@@ -259,10 +270,10 @@ class OrderCreateView(APIView):
 
 
 class OrderListView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
 
         orders = Order.objects.filter(user=user).exclude(state='basket')
         result = []
@@ -278,10 +289,10 @@ class OrderListView(APIView):
 
 
 class OrderDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, pk):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
             order = Order.objects.get(id=pk, user=user)
@@ -373,6 +384,8 @@ class PasswordResetConfirmView(APIView):
 
 
 class ImportPriceView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         user = request.user
         if user.type != 'supplier':
@@ -398,6 +411,8 @@ class ImportPriceView(APIView):
 
 
 class SupplierOrdersView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         user = request.user
         if user.type != 'supplier':
@@ -422,6 +437,8 @@ class ProductDetailView(RetrieveAPIView):
 
 
 class OrderStatusUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def patch(self, request, pk):
         user = request.user
         if user.type != 'supplier':
@@ -462,10 +479,10 @@ class OrderStatusUpdateView(APIView):
 
 
 class CancelOrderView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request, pk):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
             order = Order.objects.get(id=pk, user=user)
@@ -505,6 +522,8 @@ class ConfirmEmailView(APIView):
 
 
 class StorekeeperOrdersView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         user = request.user
         if user.type != 'storekeeper':
@@ -544,6 +563,8 @@ class StorekeeperOrdersView(APIView):
         return Response(result, status=status.HTTP_200_OK)
 
 class StorekeeperOrderStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def patch(self, request, pk):
         user = request.user
         if user.type != 'storekeeper':
@@ -586,6 +607,8 @@ class StorekeeperOrderStatusView(APIView):
 
 
 class StorekeeperExportOrdersView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         # 1. Проверка прав доступа
         user = request.user
@@ -619,10 +642,10 @@ class StorekeeperExportOrdersView(APIView):
 
 
 class ExportProductsView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
         user = request.user
-        if not user.is_authenticated:
-            return Response({"error": "Необходимо авторизоваться"}, status=status.HTTP_401_UNAUTHORIZED)
         if user.type not in ['storekeeper', 'supplier', 'admin']:
             return Response({"error": "Доступ запрещён"}, status=status.HTTP_403_FORBIDDEN)
 
@@ -646,3 +669,96 @@ class ExportProductsView(APIView):
             return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=os.path.basename(file_path))
         else:
             return Response({"error": "Файл не найден"}, status=status.HTTP_404_NOT_FOUND)
+
+
+class FavoriteListView(ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = FavoriteSerializer
+
+    def get_queryset(self):
+        return Favorite.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class FavoriteDeleteView(DestroyAPIView):
+    permission_classes = [IsAuthenticated]
+    queryset = Favorite.objects.all()
+    serializer_class = FavoriteSerializer
+
+    def get_queryset(self):
+        return Favorite.objects.filter(user=self.request.user)
+
+
+class MoveToCartView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+
+        try:
+            favorite = Favorite.objects.get(id=pk, user=user)
+        except Favorite.DoesNotExist:
+            return Response({"error": "Товар не найден в избранном"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Проверка, принимает ли магазин заказы
+        if not favorite.product_info.shop.state:
+            return Response({"error": "Магазин не принимает заказы"}, status=status.HTTP_400_BAD_REQUEST)
+
+        quantity = request.data.get('quantity', 1)
+        try:
+            quantity = int(quantity)
+            if quantity <= 0:
+                raise ValueError
+        except ValueError:
+            return Response({"error": "Количество должно быть положительным числом"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Проверка остатка
+        if quantity > favorite.product_info.quantity:
+            return Response({"error": "Недостаточно товара на складе"}, status=status.HTTP_400_BAD_REQUEST)
+
+        cart, _ = Order.objects.get_or_create(user=user, state='basket')
+        order_item, created = OrderItem.objects.get_or_create(
+            order=cart,
+            product_info=favorite.product_info,
+            defaults={'quantity': quantity}
+        )
+        if not created:
+            order_item.quantity += quantity
+            order_item.save()
+
+        return Response({"message": "Товар добавлен в корзину"}, status=status.HTTP_200_OK)
+
+
+class ShopStateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        user = request.user
+        if user.type != 'supplier':
+            return Response({"error": "Доступ только для поставщиков"}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            shop = Shop.objects.get(id=pk, user=user)
+        except Shop.DoesNotExist:
+            return Response({"error": "Магазин не найден или не принадлежит вам"}, status=status.HTTP_404_NOT_FOUND)
+
+        state = request.data.get('state')
+        if state is None:
+            return Response({"error": "Укажите state"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Преобразуем строку в булево значение
+        if isinstance(state, str):
+            if state.lower() == 'true':
+                state = True
+            elif state.lower() == 'false':
+                state = False
+            else:
+                return Response({"error": "state должен быть true или false"}, status=status.HTTP_400_BAD_REQUEST)
+        elif not isinstance(state, bool):
+            return Response({"error": "state должен быть true или false"}, status=status.HTTP_400_BAD_REQUEST)
+
+        shop.state = state
+        shop.save()
+        return Response({"message": f"Магазин {shop.name} {'открыт' if state else 'закрыт'}"}, status=status.HTTP_200_OK)

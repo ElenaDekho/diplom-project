@@ -28,7 +28,7 @@ def test_create_order_unauthorized():
     client = APIClient()
     response = client.post('/api/order/create/', {'contact_id': 1})
     assert response.status_code == 401
-    assert response.data['error'] == 'Необходимо авторизоваться'
+    assert 'detail' in response.data
 
 # Тест: не указан contact_id
 @pytest.mark.django_db
@@ -116,7 +116,7 @@ def test_get_orders_unauthorized():
     client = APIClient()
     response = client.get('/api/orders/')
     assert response.status_code == 401
-    assert response.data['error'] == 'Необходимо авторизоваться'
+    assert 'detail' in response.data
 
 # Тест: успешное получение деталей заказа
 @pytest.mark.django_db
@@ -153,7 +153,7 @@ def test_order_detail_unauthorized():
     client = APIClient()
     response = client.get('/api/orders/1/')
     assert response.status_code == 401
-    assert response.data['error'] == 'Необходимо авторизоваться'
+    assert 'detail' in response.data
 
 
 # Тест: проверка отправки email при создании заказа (асинхронная задача)
@@ -616,3 +616,46 @@ def test_partial_confirmation_two_suppliers_email_sent_only_once(mock_delay):
     # Проверяем, что письмо ушло покупателю
     args, kwargs = mock_delay.call_args
     assert customer.email in kwargs['recipient_list']
+
+
+# Тест: оформление заказа, когда остаток товара меньше количества в корзине
+@pytest.mark.django_db
+def test_create_order_insufficient_stock():
+    user = User.objects.create_user(email='test@test.com', password='pass', username='test')
+    shop = Shop.objects.create(name='Shop', user=user)
+    cat = Category.objects.create(name='Cat')
+    product = Product.objects.create(name='Product', category=cat)
+    product_info = ProductInfo.objects.create(product=product, shop=shop, price=100, quantity=2)
+    contact = Contact.objects.create(user=user, city='City', street='Street', house='1', phone='123')
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    # Добавляем 2 штуки в корзину (остаток 2 — допустимо)
+    client.post('/api/cart/', {'product_info_id': product_info.id, 'quantity': 2})
+
+    # Уменьшаем остаток в базе (имитируем, что другой покупатель купил часть)
+    product_info.quantity = 1
+    product_info.save()
+
+    # Пытаемся оформить заказ
+    response = client.post('/api/order/create/', {'contact_id': contact.id})
+    assert response.status_code == 400
+    assert 'Недостаточно товара' in response.data['error']
+
+# Тест: после оформления заказа остаток товара уменьшается
+@pytest.mark.django_db
+def test_order_quantity_decreases_stock():
+    user = User.objects.create_user(email='test@test.com', password='pass', username='test')
+    shop = Shop.objects.create(name='Shop', user=user)
+    cat = Category.objects.create(name='Cat')
+    product = Product.objects.create(name='Product', category=cat)
+    product_info = ProductInfo.objects.create(product=product, shop=shop, price=100, quantity=10)
+    contact = Contact.objects.create(user=user, city='City', street='Street', house='1', phone='123')
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.post('/api/cart/', {'product_info_id': product_info.id, 'quantity': 3})
+    client.post('/api/order/create/', {'contact_id': contact.id})
+
+    product_info.refresh_from_db()
+    assert product_info.quantity == 7

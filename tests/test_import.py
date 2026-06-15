@@ -8,6 +8,7 @@ import yaml
 from rest_framework.test import APIClient
 from celery import current_app
 from backend.tasks import do_import_task
+import os
 
 
 # ========== 1. НЕТ ПОЧТЫ ==========
@@ -432,7 +433,14 @@ def test_import_price_success():
         'shop': 'Test Shop',
         'owner_email': 'supplier@test.com',
         'categories': [{'id': 1, 'name': 'Electronics'}],
-        'goods': [{'category': 1, 'name': 'Laptop', 'price': 1000, 'price_rrc': 1200, 'parameters': {}}]
+        'goods': [{
+            'category': 1,
+            'name': 'Laptop',
+            'price': 1000,
+            'price_rrc': 1200,
+            'quantity': 10,  # <-- добавить
+            'parameters': {}
+        }]
     }
     with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
         yaml.dump(data, f)
@@ -481,3 +489,32 @@ def test_import_task_handles_exception():
 
         assert result.failed()
         assert isinstance(result.result, Exception)
+
+
+# Тест: импорт отклоняет товар с количеством 0
+@pytest.mark.django_db
+def test_import_skip_zero_quantity():
+    user = User.objects.create_user(email='supplier@test.com', password='pass', username='supplier', type='supplier')
+    shop = Shop.objects.create(name='Test Shop', user=user, yaml_file='temp_import.yaml')
+
+    data = {
+        'shop': 'Test Shop',
+        'owner_email': 'supplier@test.com',
+        'categories': [{'id': 1, 'name': 'Electronics'}],
+        'goods': [{'category': 1, 'name': 'Laptop', 'price': 1000, 'price_rrc': 1200, 'quantity': 0, 'parameters': {}}]
+    }
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        yaml.dump(data, f)
+        temp_path = f.name
+
+    shop.yaml_file = temp_path
+    shop.save()
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.post('/api/import/', {'shop_id': shop.id})
+
+    assert response.status_code == 200
+    assert not ProductInfo.objects.filter(product__name='Laptop').exists()
+
+    os.unlink(temp_path)

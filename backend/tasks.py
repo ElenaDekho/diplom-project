@@ -7,6 +7,8 @@ import csv
 from io import StringIO
 import os
 
+print("!!! ЗАДАЧИ ЗАГРУЖЕНЫ !!!")
+
 @shared_task
 def send_email_task(subject, message, recipient_list, from_email=None, fail_silently=False):
     send_mail(
@@ -20,17 +22,19 @@ def send_email_task(subject, message, recipient_list, from_email=None, fail_sile
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def do_import_task(self, file_path):
+    print(f"Задача начала выполнение для {file_path}")
     try:
         import_from_yaml(file_path)
         return f"Import from {file_path} completed"
     except Exception as e:
+        print(f"Ошибка: {e}")
         if self.request.retries < self.max_retries:
             self.retry(exc=e)
         else:
             raise e  # после всех попыток выбрасываем ошибку
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=5)
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def do_export_orders_task(self, user_id, filters=None):
     from django.contrib.auth import get_user_model
     from backend.models import Order
