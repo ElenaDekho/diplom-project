@@ -21,9 +21,21 @@ from django.http import HttpResponse, FileResponse
 from .tasks import send_email_task, do_import_task, do_export_orders_task, do_export_products_task
 import time
 import os
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, OpenApiRequest
+from rest_framework.permissions import AllowAny
 
 
 class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        request=UserRegisterSerializer,
+        responses={
+            201: OpenApiResponse(description="Пользователь создан"),
+            400: OpenApiResponse(description="Ошибка валидации")
+        },
+        description="Регистрация нового пользователя"
+    )
     def post(self, request):
         serializer = UserRegisterSerializer(data=request.data)
         if serializer.is_valid():
@@ -33,6 +45,16 @@ class RegisterView(APIView):
 
 
 class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        request=UserLoginSerializer,
+        responses={
+            200: OpenApiResponse(description="Токен авторизации"),
+            400: OpenApiResponse(description="Неверные учетные данные")
+        },
+        description="Авторизация пользователя"
+    )
     def post(self, request):
         serializer = UserLoginSerializer(data=request.data)
         if serializer.is_valid():
@@ -42,7 +64,17 @@ class LoginView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    parameters=[
+        OpenApiParameter(name='shop', description='ID магазина', required=False, type=int),
+        OpenApiParameter(name='product__category', description='ID категории', required=False, type=int),
+        OpenApiParameter(name='search', description='Поиск по названию', required=False, type=str),
+    ],
+    responses={200: ProductInfoSerializer(many=True)},
+    description="Список товаров с фильтрацией и поиском"
+)
 class ProductListView(ListAPIView):
+    permission_classes = [AllowAny]
     queryset = ProductInfo.objects.all()
     serializer_class = ProductInfoSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter]
@@ -53,6 +85,12 @@ class ProductListView(ListAPIView):
 class CartView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(description="Содержимое корзины и общая сумма")
+        },
+        description="Получение содержимого корзины текущего пользователя"
+    )
     def get(self, request):
         user = request.user
 
@@ -73,6 +111,24 @@ class CartView(APIView):
         total_sum = sum(item['total'] for item in result)
         return Response({"cart": result, "total_sum": total_sum}, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        request=OpenApiRequest(
+            request={
+                "type": "object",
+                "properties": {
+                    "product_info_id": {"type": "integer", "description": "ID товара"},
+                    "quantity": {"type": "integer", "description": "Количество", "default": 1}
+                },
+                "required": ["product_info_id"]
+            }
+        ),
+        responses={
+            200: OpenApiResponse(description="Товар добавлен в корзину"),
+            400: OpenApiResponse(description="Ошибка валидации"),
+            404: OpenApiResponse(description="Товар не найден")
+        },
+        description="Добавление товара в корзину"
+    )
     def post(self, request):
         user = request.user
 
@@ -112,6 +168,23 @@ class CartView(APIView):
 
         return Response({"message": "Товар добавлен в корзину"}, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        request=OpenApiRequest(
+            request={
+                "type": "object",
+                "properties": {
+                    "product_info_id": {"type": "integer", "description": "ID товара"}
+                },
+                "required": ["product_info_id"]
+            }
+        ),
+        responses={
+            200: OpenApiResponse(description="Товар удален из корзины"),
+            400: OpenApiResponse(description="Не указан товар"),
+            404: OpenApiResponse(description="Товар не найден в корзине")
+        },
+        description="Удаление товара из корзины"
+    )
     def delete(self, request):
         user = request.user
 
@@ -130,6 +203,24 @@ class CartView(APIView):
         except OrderItem.DoesNotExist:
             return Response({"error": "Товар не найден в корзине"}, status=status.HTTP_404_NOT_FOUND)
 
+    @extend_schema(
+        request=OpenApiRequest(
+            request={
+                'type': 'object',
+                'properties': {
+                    'product_info_id': {'type': 'integer', 'description': 'ID товара'},
+                    'quantity': {'type': 'integer', 'description': 'Новое количество товара'}
+                },
+                'required': ['product_info_id', 'quantity']
+            }
+        ),
+        responses={
+            200: OpenApiResponse(description="Количество обновлено или товар удален"),
+            400: OpenApiResponse(description="Ошибка валидации данных или недостаток товара на складе"),
+            404: OpenApiResponse(description="Корзина пуста или товар не найден")
+        },
+        description="Обновление количества товара в корзине"
+    )
     def put(self, request):
         user = request.user
 
@@ -162,9 +253,18 @@ class CartView(APIView):
         except OrderItem.DoesNotExist:
             return Response({"error": "Товар не найден в корзине"}, status=status.HTTP_404_NOT_FOUND)
 
+
 class ContactView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        request=ContactSerializer,
+        responses={
+            201: OpenApiResponse(description="Контакт успешно добавлен"),
+            400: OpenApiResponse(description="Ошибка валидации или превышен лимит контактов")
+        },
+        description="Добавление нового контакта пользователя"
+    )
     def post(self, request):
         user = request.user
 
@@ -177,6 +277,12 @@ class ContactView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(description="Список контактов пользователя")
+        },
+        description="Получение списка всех контактов текущего пользователя"
+    )
     def get(self, request):
         user = request.user
 
@@ -188,6 +294,16 @@ class ContactView(APIView):
 class ContactDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='pk', description='ID контакта', required=True, type=int)
+        ],
+        responses={
+            200: OpenApiResponse(description="Контакт удален"),
+            404: OpenApiResponse(description="Контакт не найден")
+        },
+        description="Удаление контакта"
+    )
     def delete(self, request, pk):
         user = request.user
 
@@ -202,6 +318,23 @@ class ContactDetailView(APIView):
 class OrderCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        request=OpenApiRequest(
+            request={
+                'type': 'object',
+                'properties': {
+                    'contact_id': {'type': 'integer', 'description': 'ID контакта для доставки'}
+                },
+                'required': ['contact_id']
+            }
+        ),
+        responses={
+            200: OpenApiResponse(description="Заказ успешно оформлен"),
+            400: OpenApiResponse(description="Ошибка валидации, пустая корзина или магазин не принимает заказы"),
+            404: OpenApiResponse(description="Контакт не найден")
+        },
+        description="Оформление заказа из корзины"
+    )
     def post(self, request):
         user = request.user
 
@@ -272,6 +405,12 @@ class OrderCreateView(APIView):
 class OrderListView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(description="Список заказов пользователя")
+        },
+        description="Получение списка всех заказов текущего пользователя (исключая корзину)"
+    )
     def get(self, request):
         user = request.user
 
@@ -282,7 +421,7 @@ class OrderListView(APIView):
                 "id": order.id,
                 "dt": order.dt,
                 "state": order.state,
-                "contact": f"{order.contact.city}, {order.contact.street} {order.contact.house}",
+                "contact": f"{order.contact.city}, {order.contact.street} {order.contact.house}" if order.contact else "",
                 "total": sum(item.quantity * item.product_info.price for item in order.items.all())
             })
         return Response(result, status=status.HTTP_200_OK)
@@ -291,6 +430,13 @@ class OrderListView(APIView):
 class OrderDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='pk', description='ID заказа', required=True, type=int)
+        ],
+        responses={200: OpenApiResponse(description="Детали заказа")},
+        description="Просмотр деталей заказа"
+    )
     def get(self, request, pk):
         user = request.user
 
@@ -313,7 +459,7 @@ class OrderDetailView(APIView):
             "id": order.id,
             "dt": order.dt,
             "state": order.state,
-            "contact": f"{order.contact.city}, {order.contact.street} {order.contact.house}",
+            "contact": f"{order.contact.city}, {order.contact.street} {order.contact.house}" if order.contact else "",
             "items": items,
             "total": sum(item['total'] for item in items)
         }
@@ -321,6 +467,13 @@ class OrderDetailView(APIView):
 
 
 class LogoutView(APIView):
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(description="Вы вышли из системы"),
+            401: OpenApiResponse(description="Вы не авторизованы")
+        },
+        description="Выход из системы (удаление токена)"
+    )
     def post(self, request):
         if not request.user.is_authenticated:
             return Response({"error": "Вы не авторизованы"}, status=status.HTTP_401_UNAUTHORIZED)
@@ -329,6 +482,14 @@ class LogoutView(APIView):
 
 
 class ProductShopsView(APIView):
+    permission_classes = [AllowAny]
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='product_id', description='ID товара', required=True, type=int)
+        ],
+        responses={200: OpenApiResponse(description="Список магазинов для товара")},
+        description="Просмотр магазинов, в которых есть товар"
+    )
     def get(self, request, product_id):
         product_infos = ProductInfo.objects.filter(product_id=product_id)
         if not product_infos:
@@ -347,6 +508,23 @@ class ProductShopsView(APIView):
 
 
 class PasswordResetRequestView(APIView):
+    permission_classes = [AllowAny]
+    @extend_schema(
+        request=OpenApiRequest(
+            request={
+                'type': 'object',
+                'properties': {
+                    'email': {'type': 'string', 'format': 'email', 'description': 'Email пользователя'}
+                },
+                'required': ['email']
+            }
+        ),
+        responses={
+            200: OpenApiResponse(description="Токен сброса пароля сгенерирован"),
+            404: OpenApiResponse(description="Пользователь с таким email не найден")
+        },
+        description="Запрос на сброс пароля (генерация токена)"
+    )
     def post(self, request):
         email = request.data.get('email')
         try:
@@ -363,6 +541,24 @@ class PasswordResetRequestView(APIView):
 
 
 class PasswordResetConfirmView(APIView):
+    permission_classes = [AllowAny]
+    @extend_schema(
+        request=OpenApiRequest(
+            request={
+                'type': 'object',
+                'properties': {
+                    'token': {'type': 'string', 'description': 'Токен сброса пароля'},
+                    'new_password': {'type': 'string', 'description': 'Новый пароль'}
+                },
+                'required': ['token', 'new_password']
+            }
+        ),
+        responses={
+            200: OpenApiResponse(description="Пароль успешно изменён"),
+            400: OpenApiResponse(description="Неверный или истёкший токен")
+        },
+        description="Подтверждение сброса пароля и установка нового пароля"
+    )
     def post(self, request):
         token = request.data.get('token')
         new_password = request.data.get('new_password')
@@ -386,6 +582,25 @@ class PasswordResetConfirmView(APIView):
 class ImportPriceView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        request=OpenApiRequest(
+            request={
+                'type': 'object',
+                'properties': {
+                    'shop_id': {'type': 'integer', 'description': 'ID магазина'}
+                },
+                'required': ['shop_id']
+            }
+        ),
+        responses={
+            200: OpenApiResponse(description="Задача импорта запущена"),
+            400: OpenApiResponse(description="Не указан shop_id или не указан yaml_file"),
+            403: OpenApiResponse(description="Доступ запрещен (не поставщик)"),
+            404: OpenApiResponse(description="Магазин не найден"),
+            500: OpenApiResponse(description="Ошибка сервера")
+        },
+        description="Запуск асинхронного импорта цен из YAML-файла для магазина поставщика"
+    )
     def post(self, request):
         user = request.user
         if user.type != 'supplier':
@@ -405,7 +620,7 @@ class ImportPriceView(APIView):
 
         try:
             do_import_task.delay(shop.yaml_file)
-            return Response({"message": f"Импорт для магазина {shop.name} выполнен"}, status=status.HTTP_200_OK)
+            return Response({"message": f"Задача импорта для магазина {shop.name} запущена"}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -413,6 +628,13 @@ class ImportPriceView(APIView):
 class SupplierOrdersView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(description="Список новых заказов для поставщика"),
+            403: OpenApiResponse(description="Доступ запрещен (не поставщик)")
+        },
+        description="Получение списка новых заказов, содержащих товары из магазинов текущего поставщика"
+    )
     def get(self, request):
         user = request.user
         if user.type != 'supplier':
@@ -432,13 +654,44 @@ class SupplierOrdersView(APIView):
 
 
 class ProductDetailView(RetrieveAPIView):
+    permission_classes = [AllowAny]
     queryset = ProductInfo.objects.all()
     serializer_class = ProductInfoSerializer
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='pk', description='ID товара (ProductInfo)', required=True, type=int)
+        ],
+        responses={200: ProductInfoSerializer},
+        description="Получение детальной информации о товаре"
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 
 class OrderStatusUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='pk', description='ID заказа', required=True, type=int)
+        ],
+        request=OpenApiRequest(
+            request={
+                "type": "object",
+                "properties": {
+                    "state": {"type": "string", "description": "Новый статус (опционально)"}
+                }
+            }
+        ),
+        responses={
+            200: OpenApiResponse(description="Статус обновлён"),
+            400: OpenApiResponse(description="В заказе нет ваших товаров или ошибка валидации"),
+            403: OpenApiResponse(description="Доступ только для поставщиков"),
+            404: OpenApiResponse(description="Заказ не найден")
+        },
+        description="Подтверждение заказа поставщиком (частичное или полное)"
+    )
     def patch(self, request, pk):
         user = request.user
         if user.type != 'supplier':
@@ -481,6 +734,17 @@ class OrderStatusUpdateView(APIView):
 class CancelOrderView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='pk', description='ID заказа', required=True, type=int)
+        ],
+        responses={
+            200: OpenApiResponse(description="Заказ отменён"),
+            400: OpenApiResponse(description="Заказ уже отменён"),
+            404: OpenApiResponse(description="Заказ не найден")
+        },
+        description="Отмена заказа покупателем"
+    )
     def post(self, request, pk):
         user = request.user
 
@@ -505,6 +769,17 @@ class CancelOrderView(APIView):
 
 
 class ConfirmEmailView(APIView):
+    permission_classes = [AllowAny]
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='token', description='Токен подтверждения email', required=True, type=str)
+        ],
+        responses={
+            200: OpenApiResponse(description="Email подтверждён"),
+            400: OpenApiResponse(description="Неверный или истекший токен")
+        },
+        description="Подтверждение email при регистрации"
+    )
     def get(self, request, token):
         try:
             confirm_token = EmailConfirmationToken.objects.get(token=token)
@@ -524,6 +799,20 @@ class ConfirmEmailView(APIView):
 class StorekeeperOrdersView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='status', description='Статус заказа (можно передать несколько)', required=False,
+                             type=str, many=True),
+            OpenApiParameter(name='date_from', description='Дата от (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='date_to', description='Дата до (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='shop', description='ID магазина', required=False, type=int),
+        ],
+        responses={
+            200: OpenApiResponse(description="Список заказов для кладовщика"),
+            403: OpenApiResponse(description="Доступ только для кладовщиков")
+        },
+        description="Просмотр заказов для кладовщика с фильтрацией"
+    )
     def get(self, request):
         user = request.user
         if user.type != 'storekeeper':
@@ -562,9 +851,31 @@ class StorekeeperOrdersView(APIView):
             })
         return Response(result, status=status.HTTP_200_OK)
 
+
 class StorekeeperOrderStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='pk', description='ID заказа', required=True, type=int)
+        ],
+        request=OpenApiRequest(
+            request={
+                "type": "object",
+                "properties": {
+                    "state": {"type": "string", "description": "Новый статус (assembled, sent, delivered)"}
+                },
+                "required": ["state"]
+            }
+        ),
+        responses={
+            200: OpenApiResponse(description="Статус изменён"),
+            400: OpenApiResponse(description="Недопустимый статус или нарушена последовательность"),
+            403: OpenApiResponse(description="Доступ только для кладовщиков"),
+            404: OpenApiResponse(description="Заказ не найден")
+        },
+        description="Изменение статуса заказа кладовщиком (с проверкой последовательности)"
+    )
     def patch(self, request, pk):
         user = request.user
         if user.type != 'storekeeper':
@@ -609,6 +920,22 @@ class StorekeeperOrderStatusView(APIView):
 class StorekeeperExportOrdersView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='status', description='Статус заказа (можно несколько)', required=False, type=str,
+                             many=True),
+            OpenApiParameter(name='date_from', description='Дата от (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='date_to', description='Дата до (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='shop', description='ID магазина', required=False, type=int),
+        ],
+        responses={
+            200: OpenApiResponse(description="CSV-файл с заказами"),
+            403: OpenApiResponse(description="Доступ только для кладовщиков"),
+            404: OpenApiResponse(description="Файл не найден"),
+            500: OpenApiResponse(description="Ошибка выполнения экспорта")
+        },
+        description="Асинхронный экспорт заказов в CSV (кладовщик)"
+    )
     def get(self, request):
         # 1. Проверка прав доступа
         user = request.user
@@ -636,7 +963,12 @@ class StorekeeperExportOrdersView(APIView):
 
         # 5. Отдача файла пользователю
         if os.path.exists(file_path):
-            return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=os.path.basename(file_path))
+            return FileResponse(
+                open(file_path, 'rb'),
+                as_attachment=True,
+                filename=os.path.basename(file_path),
+                content_type='text/csv; charset=utf-8-sig'
+            )
         else:
             return Response({"error": "Файл не найден"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -644,6 +976,21 @@ class StorekeeperExportOrdersView(APIView):
 class ExportProductsView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='shop', description='ID магазина', required=False, type=int),
+            OpenApiParameter(name='category', description='ID категории', required=False, type=int),
+            OpenApiParameter(name='min_quantity', description='Минимальное количество на складе', required=False,
+                             type=int),
+        ],
+        responses={
+            200: OpenApiResponse(description="CSV-файл с товарами"),
+            403: OpenApiResponse(description="Доступ запрещён (только для кладовщика, поставщика, администратора)"),
+            404: OpenApiResponse(description="Файл не найден"),
+            500: OpenApiResponse(description="Ошибка экспорта")
+        },
+        description="Асинхронный экспорт товаров в CSV с фильтрацией"
+    )
     def get(self, request):
         user = request.user
         if user.type not in ['storekeeper', 'supplier', 'admin']:
@@ -676,7 +1023,27 @@ class FavoriteListView(ListCreateAPIView):
     serializer_class = FavoriteSerializer
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Favorite.objects.none()
         return Favorite.objects.filter(user=self.request.user)
+
+    @extend_schema(
+        responses={200: FavoriteSerializer(many=True)},
+        description="Список избранных товаров пользователя"
+    )
+    def get(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        request=FavoriteSerializer,
+        responses={
+            201: OpenApiResponse(description="Товар добавлен в избранное"),
+            400: OpenApiResponse(description="Ошибка валидации")
+        },
+        description="Добавление товара в избранное"
+    )
+    def post(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -690,10 +1057,42 @@ class FavoriteDeleteView(DestroyAPIView):
     def get_queryset(self):
         return Favorite.objects.filter(user=self.request.user)
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='pk', description='ID записи в избранном', required=True, type=int)
+        ],
+        responses={
+            204: OpenApiResponse(description="Товар удалён из избранного"),
+            404: OpenApiResponse(description="Запись не найдена")
+        },
+        description="Удаление товара из избранного"
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
 
 class MoveToCartView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='pk', description='ID записи в избранном', required=True, type=int)
+        ],
+        request=OpenApiRequest(
+            request={
+                'type': 'object',
+                'properties': {
+                    'quantity': {'type': 'integer', 'description': 'Количество товара (по умолчанию 1)'}
+                }
+            }
+        ),
+        responses={
+            200: OpenApiResponse(description="Товар добавлен в корзину"),
+            400: OpenApiResponse(description="Ошибка валидации, недостаток товара или магазин не принимает заказы"),
+            404: OpenApiResponse(description="Товар не найден в избранном")
+        },
+        description="Перемещение товара из избранного в корзину"
+    )
     def post(self, request, pk):
         user = request.user
 
@@ -734,6 +1133,31 @@ class MoveToCartView(APIView):
 class ShopStateView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='pk', description='ID магазина', required=True, type=int)
+        ],
+        request=OpenApiRequest(
+            request={
+                'type': 'object',
+                'properties': {
+                    'state': {
+                        'type': 'string',
+                        'enum': ['true', 'false'],
+                        'description': 'Статус магазина ("true" - открыт, "false" - закрыт)'
+                    }
+                },
+                'required': ['state']
+            }
+        ),
+        responses={
+            200: OpenApiResponse(description="Статус магазина обновлен"),
+            400: OpenApiResponse(description="Ошибка валидации статуса"),
+            403: OpenApiResponse(description="Доступ запрещен (не поставщик)"),
+            404: OpenApiResponse(description="Магазин не найден")
+        },
+        description="Изменение статуса активности магазина (открыт/закрыт)"
+    )
     def patch(self, request, pk):
         user = request.user
         if user.type != 'supplier':

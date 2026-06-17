@@ -46,7 +46,7 @@ def run_import(modeladmin, request, queryset):
         else:
             modeladmin.message_user(request, f'Магазин "{shop.name}" не имеет файла импорта', level='ERROR')
 
-# Если модель уже зарегистрирована, сначала удалим
+
 try:
     admin.site.unregister(Shop)
 except admin.sites.NotRegistered:

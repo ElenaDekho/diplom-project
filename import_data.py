@@ -11,7 +11,6 @@ from users.models import User
 
 
 def import_from_yaml(file_path):
-    print(f"DEBUG: Начался импорт файла {file_path}")
     if not file_path:
         print(f"ОШИБКА: Не указан путь к файлу для магазина")
         return
@@ -20,8 +19,7 @@ def import_from_yaml(file_path):
         with open(file_path, 'r', encoding='utf-8') as file:
             data = yaml.safe_load(file)
     except FileNotFoundError:
-        print(f"ОШИБКА: Файл '{file_path}' не найден")
-        return
+        raise FileNotFoundError(f"Файл '{file_path}' не найден")
     except yaml.scanner.ScannerError as e:
         print(f"ОШИБКА: Неверный синтаксис YAML: {e}")
         return

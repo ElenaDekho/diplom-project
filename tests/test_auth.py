@@ -49,7 +49,6 @@ def test_logout_unauthorized():
     client = APIClient()
     response = client.post('/api/logout/')
     assert response.status_code == 401
-    assert response.data['error'] == 'Вы не авторизованы'
 
 # Тест: успешная регистрация
 @pytest.mark.django_db

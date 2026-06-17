@@ -454,7 +454,7 @@ def test_import_price_success():
     response = client.post('/api/import/', {'shop_id': shop.id})
 
     assert response.status_code == 200
-    assert response.data['message'] == f'Импорт для магазина {shop.name} выполнен'
+    assert response.data['message'] == f'Задача импорта для магазина {shop.name} запущена'
     assert ProductInfo.objects.filter(product__name='Laptop').exists()
 
     # Удаляем временный файл

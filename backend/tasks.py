@@ -6,8 +6,7 @@ from django.utils import timezone
 import csv
 from io import StringIO
 import os
-
-print("!!! ЗАДАЧИ ЗАГРУЖЕНЫ !!!")
+from backend.models import Shop
 
 @shared_task
 def send_email_task(subject, message, recipient_list, from_email=None, fail_silently=False):
@@ -22,16 +21,28 @@ def send_email_task(subject, message, recipient_list, from_email=None, fail_sile
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def do_import_task(self, file_path):
-    print(f"Задача начала выполнение для {file_path}")
     try:
         import_from_yaml(file_path)
+        # Успех
+        shop = Shop.objects.get(yaml_file=file_path)
+        send_email_task.delay(
+            subject='Импорт успешен',
+            message=f'Импорт товаров для магазина {shop.name} выполнен успешно.',
+            recipient_list=[shop.user.email],
+        )
         return f"Import from {file_path} completed"
     except Exception as e:
-        print(f"Ошибка: {e}")
         if self.request.retries < self.max_retries:
             self.retry(exc=e)
         else:
-            raise e  # после всех попыток выбрасываем ошибку
+            # Ошибка после всех попыток
+            shop = Shop.objects.get(yaml_file=file_path)
+            send_email_task.delay(
+                subject='Ошибка импорта',
+                message=f'Не удалось выполнить импорт для магазина {shop.name}. Ошибка: {e}',
+                recipient_list=[shop.user.email],
+            )
+            raise e
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)

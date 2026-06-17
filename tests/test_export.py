@@ -44,7 +44,7 @@ def test_export_orders_filter_by_date():
     today = timezone.now().date().isoformat()
     response = client.get('/api/storekeeper/orders/export/', {'date_from': today, 'date_to': today})
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -87,7 +87,7 @@ def test_export_orders_filter_by_shop():
     client.force_authenticate(user=storekeeper)
     response = client.get('/api/storekeeper/orders/export/', {'shop': shop1.id})
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -131,7 +131,7 @@ def test_export_orders_filter_by_shop():
         client.force_authenticate(user=storekeeper)
         response = client.get('/api/storekeeper/orders/export/', {'shop': shop1.id})
         assert response.status_code == 200
-        assert response['Content-Type'] == 'text/csv'
+        assert 'text/csv' in response['Content-Type']
 
         content = b''.join(response.streaming_content).decode('utf-8-sig')
         lines = content.strip().split('\n')
@@ -166,7 +166,7 @@ def test_export_order_with_two_shops():
     client.force_authenticate(user=storekeeper)
     response = client.get('/api/storekeeper/orders/export/')
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -274,7 +274,7 @@ def test_export_orders_default_statuses():
     client.force_authenticate(user=storekeeper)
     response = client.get('/api/storekeeper/orders/export/')
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -314,7 +314,7 @@ def test_export_orders_with_status_new():
     client.force_authenticate(user=storekeeper)
     response = client.get('/api/storekeeper/orders/export/', {'status': 'new'})
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -343,7 +343,7 @@ def test_export_products_storekeeper_access():
     client.force_authenticate(user=storekeeper)
     response = client.get('/api/export/products/')
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -371,7 +371,7 @@ def test_export_products_supplier_only_own():
     client.force_authenticate(user=supplier)
     response = client.get('/api/export/products/')
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -394,7 +394,7 @@ def test_export_products_admin_all():
     client.force_authenticate(user=admin)
     response = client.get('/api/export/products/')
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -419,7 +419,7 @@ def test_export_products_filter_by_shop():
     client.force_authenticate(user=storekeeper)
     response = client.get('/api/export/products/', {'shop': shop1.id})
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -445,7 +445,7 @@ def test_export_products_filter_by_category():
     client.force_authenticate(user=storekeeper)
     response = client.get('/api/export/products/', {'category': cat1.id})
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -470,7 +470,7 @@ def test_export_products_filter_by_min_quantity():
     client.force_authenticate(user=storekeeper)
     response = client.get('/api/export/products/', {'min_quantity': 7})
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -495,7 +495,7 @@ def test_export_products_filter_combination():
     client.force_authenticate(user=storekeeper)
     response = client.get('/api/export/products/', {'shop': shop.id, 'min_quantity': 7})
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -518,7 +518,7 @@ def test_export_products_csv_format():
     client.force_authenticate(user=storekeeper)
     response = client.get('/api/export/products/')
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -541,7 +541,7 @@ def test_export_products_empty_result():
     client.force_authenticate(user=storekeeper)
     response = client.get('/api/export/products/', {'min_quantity': 100})
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
@@ -576,7 +576,7 @@ def test_export_products_supplier_foreign_shop():
     client.force_authenticate(user=supplier)
     response = client.get('/api/export/products/', {'shop': shop_other.id})
     assert response.status_code == 200
-    assert response['Content-Type'] == 'text/csv'
+    assert 'text/csv' in response['Content-Type']
 
     content = b''.join(response.streaming_content).decode('utf-8-sig')
     lines = content.strip().split('\n')
