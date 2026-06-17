@@ -184,46 +184,26 @@ pytest --cov=backend -v
 
 ### Структура проекта
 
-diplom_project/
-
-├── backend/                # Основное приложение API
-
-│   ├── models.py           # Модели данных (Shop, Product, Order...)
-
-│   ├── serializers.py      # Сериализаторы DRF
-
-│   ├── views.py            # ViewSet и APIView endpoints
-
-│   ├── tasks.py            # Celery задачи (import, export, email)
-
-│   └── urls.py             # Маршрутизация API
-
-── users/                  # Приложение пользователей (кастомная модель User)
-
-├── config/                 # Настройки Django (settings, celery, wsgi)
-
-├── tests/                  # Папка с тестами (pytest)
-
-├── import_data.py          # Логика парсинга YAML и импорта в БД
-
-├── import_sample.yaml      # Пример файла прайс-листа для импорта
-
-├── manage.py               # Утилита управления Django
-
-── requirements.txt        # Зависимости проекта
-
-├── pytest.ini              # Конфигурация тестов
-
-├── .env_example            # Шаблон переменных окружения
-
-├── .gitignore              # Исключения для Git
-
-├── API.md                  # Статическая документация API
-
-── docker-compose.yaml     # Конфигурация Docker
-
-├── Dockerfile              # Образ приложения
-
+diplom_project/<br>
+├── backend/                # Основное приложение API<br>
+│   ├── models.py           # Модели данных (Shop, Product, Order...)<br>
+│   ├── serializers.py      # Сериализаторы DRF<br>
+│   ├── views.py            # ViewSet и APIView endpoints<br>
+│   ├── tasks.py            # Celery задачи (import, export, email)<br>
+│   └── urls.py             # Маршрутизация API<br>
+── users/                  # Приложение пользователей (кастомная модель User)<br>
+├── config/                 # Настройки Django (settings, celery, wsgi)<br>
+├── tests/                  # Папка с тестами (pytest)<br>
+├── import_data.py          # Логика парсинга YAML и импорта в БД<br>
+├── import_sample.yaml      # Пример файла прайс-листа для импорта<br>
+├── manage.py               # Утилита управления Django<br>
+── requirements.txt        # Зависимости проекта<br>
+├── pytest.ini              # Конфигурация тестов<br>
+├── .env_example            # Шаблон переменных окружения<br>
+├── .gitignore              # Исключения для Git<br>
+├── API.md                  # Статическая документация API<br>
+── docker-compose.yaml     # Конфигурация Docker<br>
+├── Dockerfile              # Образ приложения<br>
 └── README.md               # Этот файл
 
 **Примечание:**
