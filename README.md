@@ -109,20 +109,15 @@
 
 1. Клонируйте репозиторий:
 
-git clone https://github.com/ElenaDekho/diplom-project.git
-
+git clone https://github.com/ElenaDekho/diplom-project.git<br>
 cd diplom-project
 
 2. Создайте файл .env в корневой папке (пример содержимого):
 
-SECRET_KEY=your-secret-key-here
-
-CELERY_BROKER_URL=redis://redis:6379/0
-
-CELERY_RESULT_BACKEND=redis://redis:6379/0
-
-EMAIL_HOST_USER=your-email@example.com
-
+SECRET_KEY=your-secret-key-here<br>
+CELERY_BROKER_URL=redis://redis:6379/0<br>
+CELERY_RESULT_BACKEND=redis://redis:6379/0<br>
+EMAIL_HOST_USER=your-email@example.com<br>
 EMAIL_HOST_PASSWORD=your-password
 
 3. Запустите контейнеры:
@@ -131,8 +126,7 @@ docker compose up -d --build
 
 4. Примените миграции и создайте суперпользователя:
 
-docker compose exec web python manage.py migrate
-
+docker compose exec web python manage.py migrate<br>
 docker compose exec web python manage.py createsuperuser
 
 5. Сервис доступен по адресу: http://localhost:8000
@@ -143,8 +137,7 @@ docker compose exec web python manage.py createsuperuser
 
 **Важно:** Если вы изменяли модели (models.py) после первого запуска, не забудьте создать новые миграции перед их применением:
 
-docker compose exec web python manage.py makemigrations
-
+docker compose exec web python manage.py makemigrations<br>
 docker compose exec web python manage.py migrate
 
 ### Локальный запуск (без Docker)
