@@ -110,15 +110,20 @@
 1. Клонируйте репозиторий:
 
 git clone https://github.com/ElenaDekho/diplom-project.git
+
 cd diplom-project
 
 2. Создайте файл .env в корневой папке (пример содержимого):
 
 SECRET_KEY=your-secret-key-here
+
 CELERY_BROKER_URL=redis://redis:6379/0
+
 CELERY_RESULT_BACKEND=redis://redis:6379/0
-# EMAIL_HOST_USER=your-email@example.com
-# EMAIL_HOST_PASSWORD=your-password
+
+EMAIL_HOST_USER=your-email@example.com
+
+EMAIL_HOST_PASSWORD=your-password
 
 3. Запустите контейнеры:
 
@@ -127,16 +132,19 @@ docker compose up -d --build
 4. Примените миграции и создайте суперпользователя:
 
 docker compose exec web python manage.py migrate
+
 docker compose exec web python manage.py createsuperuser
 
 5. Сервис доступен по адресу: http://localhost:8000
 
 - **Admin Panel:** http://localhost:8000/admin/
+  
 - **Swagger API Docs:** http://localhost:8000/api/docs/
 
 **Важно:** Если вы изменяли модели (models.py) после первого запуска, не забудьте создать новые миграции перед их применением:
 
 docker compose exec web python manage.py makemigrations
+
 docker compose exec web python manage.py migrate
 
 ### Локальный запуск (без Docker)
