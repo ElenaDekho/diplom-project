@@ -185,25 +185,45 @@ pytest --cov=backend -v
 ### Структура проекта
 
 diplom_project/
+
 ├── backend/                # Основное приложение API
+
 │   ├── models.py           # Модели данных (Shop, Product, Order...)
+
 │   ├── serializers.py      # Сериализаторы DRF
+
 │   ├── views.py            # ViewSet и APIView endpoints
+
 │   ├── tasks.py            # Celery задачи (import, export, email)
+
 │   └── urls.py             # Маршрутизация API
+
 ── users/                  # Приложение пользователей (кастомная модель User)
+
 ├── config/                 # Настройки Django (settings, celery, wsgi)
+
 ├── tests/                  # Папка с тестами (pytest)
+
 ├── import_data.py          # Логика парсинга YAML и импорта в БД
+
 ├── import_sample.yaml      # Пример файла прайс-листа для импорта
+
 ├── manage.py               # Утилита управления Django
+
 ── requirements.txt        # Зависимости проекта
+
 ├── pytest.ini              # Конфигурация тестов
+
 ├── .env_example            # Шаблон переменных окружения
+
 ├── .gitignore              # Исключения для Git
+
 ├── API.md                  # Статическая документация API
+
 ── docker-compose.yaml     # Конфигурация Docker
+
 ├── Dockerfile              # Образ приложения
+
 └── README.md               # Этот файл
 
 **Примечание:**
