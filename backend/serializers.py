@@ -59,7 +59,9 @@ class ProductParameterSerializer(serializers.ModelSerializer):
 class ProductInfoSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
     shop_name = serializers.CharField(source='shop.name', read_only=True)
-    parameters = ProductParameterSerializer(source='productparameter_set', many=True, read_only=True)
+
+    # Поле parameters совпадает с related_name в модели, source не нужен
+    parameters = ProductParameterSerializer(many=True, read_only=True)
 
     class Meta:
         model = ProductInfo

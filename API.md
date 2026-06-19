@@ -139,12 +139,21 @@ Authorization: Token {ваш_токен}
 [
     {
         "id": 66,
-        "product_name": "Название товара",
-        "shop_name": "Магазин",
+        "product_name": "Игрушка для кота",
+        "shop_name": "ЗооМир",
         "price": 120,
         "price_rrc": 150,
-        "quantity": 10,
-        "parameters": []
+        "quantity": 8,
+        "parameters": [
+            {
+                "parameter": 7,
+                "value": "Красный"
+            },
+            {
+                "parameter": 12,
+                "value": "Мышка шуршащая"
+            }
+        ]
     }
 ]
 
