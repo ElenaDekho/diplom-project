@@ -23,9 +23,12 @@ import time
 import os
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter, OpenApiRequest
 from rest_framework.permissions import AllowAny
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
 
 class RegisterView(APIView):
+    throttle_classes = [AnonRateThrottle]
+    throttle_scope = 'register'
     permission_classes = [AllowAny]
 
     @extend_schema(
@@ -45,6 +48,8 @@ class RegisterView(APIView):
 
 
 class LoginView(APIView):
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
+    throttle_scope = 'user'
     permission_classes = [AllowAny]
 
     @extend_schema(
