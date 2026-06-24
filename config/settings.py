@@ -35,19 +35,26 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    'users',
-    'backend',
-    'rest_framework',
-    'rest_framework.authtoken',
-    'drf_spectacular',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'rest_framework.authtoken',
+    'drf_spectacular',
     'django_filters',
+    'backend.apps.BackendConfig',
+    'baton',
+    'users',
 ]
+
+BATON = {
+    'SITE_HEADER': 'Diplom Project Admin',
+    'SITE_TITLE': 'Diplom Project',
+    'INDEX_TITLE': 'Панель управления',
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -139,7 +146,6 @@ CACHES = {
     }
 }
 
-import sys
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -231,4 +237,4 @@ SWAGGER_SETTINGS = {
     'USE_SESSION_AUTH': False,
 }
 
-
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
