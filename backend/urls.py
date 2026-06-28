@@ -5,6 +5,7 @@ from .views import PasswordResetRequestView, PasswordResetConfirmView, ImportPri
 from .views import ProductDetailView, OrderStatusUpdateView, CancelOrderView, ConfirmEmailView
 from .views import StorekeeperOrdersView, StorekeeperOrderStatusView, StorekeeperExportOrdersView
 from .views import ExportProductsView, FavoriteListView, FavoriteDeleteView, MoveToCartView, ShopStateView
+from .views import SentryTestView
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),

@@ -1191,3 +1191,10 @@ class ShopStateView(APIView):
         shop.state = state
         shop.save()
         return Response({"message": f"Магазин {shop.name} {'открыт' if state else 'закрыт'}"}, status=status.HTTP_200_OK)
+
+
+class SentryTestView(APIView):
+    permission_classes = []
+    def get(self, request):
+        1 / 0
+        return Response({"status": "ok"})
